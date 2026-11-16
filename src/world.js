@@ -1,7 +1,7 @@
 // world.js — builds low-poly Ereke: terrain, animated sea, beaches, town, mosque,
 // fort, lake, palms, boats. Also owns collision boxes and the ground-height function.
 import * as THREE from '../vendor/three.module.min.js';
-import { WORLD, SEA_X, PLACES, TREASURE_CHESTS, MONSTERS } from './data.js';
+import { WORLD, SEA_X, SEA_Y, SEA_MAX_X, PLACES, TREASURE_CHESTS, MONSTERS, SPOTS, FREE_BOAT_MAX_X } from './data.js';
 import { IS_TOUCH } from './ui.js';
 
 export const LAKE = { x: -118, z: 82, r: 34 };
@@ -132,6 +132,52 @@ export function makeBoat(color = 0x8b5a2b) {
   return g;
 }
 
+/** Free small boat (sampan): a simple dugout canoe, smaller than any bought boat. */
+export function makeSampan() {
+  const g = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.5, 0.9), mat(0x8b5a2b));
+  hull.position.y = 0.25; hull.castShadow = true; g.add(hull);
+  const bow = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.9, 4), mat(0x8b5a2b));
+  bow.position.set(1.7, 0.25, 0); bow.rotation.z = -Math.PI / 2; g.add(bow);
+  const stern = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.7, 4), mat(0x6b4423));
+  stern.position.set(-1.6, 0.25, 0); stern.rotation.z = Math.PI / 2; g.add(stern);
+  for (const px of [-0.6, 0.6]) {
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.08, 0.9), mat(0x6b4423));
+    plank.position.set(px, 0.52, 0); g.add(plank);
+  }
+  const paddle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 5), mat(0x5b3a1e));
+  paddle.position.set(0.2, 0.6, 0.3); paddle.rotation.z = 0.7; g.add(paddle);
+  return g;
+}
+
+/** Giant ship "KM Titanik Ereke": a long hull, two decks, two funnels, masts.
+    Built from boxes like every model in this game. The main deck top sits at
+    local y 3.1 (world TITANIC_DECK_Y 3.65 when the group floats at SEA_Y). */
+export function makeTitanic() {
+  const g = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(30, 3, 6), mat(0x1a2a3a));
+  hull.position.y = 1.0; hull.castShadow = true; g.add(hull);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(30.1, 0.4, 6.1), mat(0xc0392b));
+  stripe.position.y = 2.2; g.add(stripe);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(28, 0.6, 5.4), mat(0x8b6b3d));
+  deck.position.y = 2.8; deck.castShadow = true; g.add(deck);
+  const superstructure = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 4), mat(0xecf0f1));
+  superstructure.position.set(-10, 4.1, 0); superstructure.castShadow = true; g.add(superstructure);
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 5), mat(0xecf0f1));
+  bridge.position.set(-5.5, 4.6, 0); g.add(bridge);
+  for (const fx of [-13.5, -6.5]) {
+    const funnel = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 3, 8), mat(0xf1c40f));
+    funnel.position.set(fx, 6.6, 0); funnel.castShadow = true; g.add(funnel);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.72, 0.5, 8), mat(0x222222));
+    top.position.set(fx, 8.3, 0); g.add(top);
+  }
+  for (const mx of [12, -16]) {
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 5, 5), mat(0x6b4a26));
+    mast.position.set(mx, 5.6, 0); g.add(mast);
+  }
+  return g;
+}
+
 export function makePersonMesh(shirt, skin = 0xc68863) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 0.5), mat(shirt));
@@ -183,9 +229,11 @@ export function makeWelcomeSign(text) {
   return g;
 }
 
-/** Dirt road ribbon: a flat strip that hugs the terrain along a polyline
-  of waypoints. Same dusty colour as the roads drawn on the full map
-  (0xc9a86a). Sits just above the ground so it never z-fights the terrain. */
+/** Asphalt road ribbon: a dark-grey strip that hugs the terrain along a
+  polyline of waypoints, with a dashed white centre line following the same
+  curve (batch 4: Bang asked "mana jalan aspalnya"). Same dark grey as the
+  roads drawn on the full map. Sits just above the ground so it never
+  z-fights the terrain; the centre line sits a little higher still. */
 export function makeRoad(points, width = 5) {
   const pts = [];
   for (let i = 0; i < points.length - 1; i++) {
@@ -217,9 +265,54 @@ export function makeRoad(points, width = 5) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 1, side: THREE.DoubleSide }));
+  const group = new THREE.Group();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x3a3f44, roughness: 0.95, side: THREE.DoubleSide }));
   mesh.receiveShadow = true;
-  return mesh;
+  group.add(mesh);
+  // Dashed centre line: 1.2 m dashes with 1.2 m gaps, a thin ribbon hugging
+  // the same curve 0.07 above the asphalt.
+  const dashVerts = []; const dashIdx = [];
+  const dashW = 0.18;
+  let dist = 0; let vi = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x1, z1] = pts[i]; const [x2, z2] = pts[i + 1];
+    const segLen = Math.hypot(x2 - x1, z2 - z1);
+    const dx = (x2 - x1) / (segLen || 1); const dz = (z2 - z1) / (segLen || 1);
+    const ox = -dz * dashW; const oz = dx * dashW;
+    let s = 0;
+    while (s < segLen) {
+      const d0 = s; const d1 = Math.min(s + 1.2, segLen);
+      // Dash only when the accumulated distance falls in a dash interval.
+      const a0 = dist + d0; const a1 = dist + d1;
+      const dashStart = Math.floor(a0 / 2.4) * 2.4;
+      if (a0 < dashStart + 1.2) {
+        const c0 = Math.max(a0, dashStart); const c1 = Math.min(a1, dashStart + 1.2);
+        if (c1 > c0) {
+          const t0 = (c0 - dist) / segLen; const t1 = (c1 - dist) / segLen;
+          const ax = x1 + (x2 - x1) * t0; const az = z1 + (z2 - z1) * t0;
+          const bx = x1 + (x2 - x1) * t1; const bz = z1 + (z2 - z1) * t1;
+          dashVerts.push(ax + ox, groundHeight(ax + ox, az + oz) + 0.22, az + oz);
+          dashVerts.push(ax - ox, groundHeight(ax - ox, az - oz) + 0.22, az - oz);
+          dashVerts.push(bx + ox, groundHeight(bx + ox, bz + oz) + 0.22, bz + oz);
+          dashVerts.push(bx - ox, groundHeight(bx - ox, bz - oz) + 0.22, bz - oz);
+          dashIdx.push(vi, vi + 2, vi + 1, vi + 1, vi + 2, vi + 3);
+          vi += 4;
+        }
+      }
+      s = d1;
+    }
+    dist += segLen;
+  }
+  if (dashVerts.length) {
+    const dgeo = new THREE.BufferGeometry();
+    dgeo.setAttribute('position', new THREE.Float32BufferAttribute(dashVerts, 3));
+    dgeo.setIndex(dashIdx);
+    dgeo.computeVertexNormals();
+    const line = new THREE.Mesh(dgeo, new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.6, side: THREE.DoubleSide }));
+    line.receiveShadow = true;
+    group.add(line);
+  }
+  return group;
 }
 
 export function makeMotorbike(color = 0xe74c3c) {
@@ -370,6 +463,7 @@ export function buildWorld(scene) {
   const colors = new Float32Array(pos.count * 3);
   const sand = new THREE.Color(0xe8d29a); const grass = new THREE.Color(0x5da24a);
   const grass2 = new THREE.Color(0x7fb069); const rock = new THREE.Color(0x8d8d8d);
+  const deepWater = new THREE.Color(0x0d4a5e); // seabed: dark blue-green, never sand
   const c = new THREE.Color();
   for (let i = 0; i < pos.count; i += 1) {
     const x = pos.getX(i) + (WORLD.minX + WORLD.maxX) / 2;
@@ -379,6 +473,7 @@ export function buildWorld(scene) {
     if (x > 148) c.copy(sand);
     else if (h > 7) c.copy(rock);
     else c.copy(grass).lerp(grass2, (Math.sin(x * 0.3 + z * 0.7) + 1) / 2 * 0.6);
+    if (x > SEA_X) c.copy(deepWater); // the seabed reads as depth, not sand
     if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.r + 4) c.copy(sand);
     colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
   }
@@ -389,11 +484,13 @@ export function buildWorld(scene) {
   terrain.receiveShadow = true;
   group.add(terrain);
 
-  // --- Sea: animated plane east of the beach.
-  const seaGeo = new THREE.PlaneGeometry(140, td + 60, 24, 24);
+  // --- Sea: animated plane east of the beach, stretched far out so the
+  // biggest boats never sail past the end of the water (batch 4: x 168..1200).
+  // Opaque deep blue; wave troughs stay above the sand (SEA_Y 0.55, ±0.30).
+  const seaGeo = new THREE.PlaneGeometry(SEA_MAX_X - SEA_X + 2, td + 60, 48, 24);
   seaGeo.rotateX(-Math.PI / 2);
-  const sea = new THREE.Mesh(seaGeo, new THREE.MeshLambertMaterial({ color: 0x1e7f9e, transparent: true, opacity: 0.92, flatShading: true }));
-  sea.position.set(SEA_X + 68, 0.35, 0);
+  const sea = new THREE.Mesh(seaGeo, new THREE.MeshLambertMaterial({ color: 0x0f6a9c, opacity: 1.0, flatShading: true }));
+  sea.position.set((SEA_X - 2 + SEA_MAX_X) / 2, SEA_Y, 0);
   group.add(sea);
   const seaBase = seaGeo.attributes.position.array.slice();
 
@@ -505,14 +602,19 @@ export function buildWorld(scene) {
   const boats = [];
   const b1 = makeBoat(); b1.position.set(150, 0.4, 30); b1.rotation.y = 0.4; group.add(b1); boats.push(b1);
   const b2 = makeBoat(0x6b4423); b2.position.set(148, 0.4, 48); b2.rotation.y = -0.3; group.add(b2); boats.push(b2);
-  const b3 = makeBoat(); b3.position.set(210, 0.4, -30); b3.rotation.y = 1.2; group.add(b3); boats.push(b3);
+  const b3 = makeBoat(); b3.position.set(210, SEA_Y + 0.1, -30); b3.rotation.y = 1.2; group.add(b3); boats.push(b3);
 
-  // --- Fishing-spot markers: small wooden jetties / buoys.
+  // --- Fishing-spot markers: a wooden post + a floating 🎣 label at every
+  // shore spot (lake + river included), so the player can SEE where to fish.
   const spotMarkers = [];
-  for (const s of [{ x: 158, z: -110 }, { x: 158, z: -12 }, { x: 158, z: 42 }, { x: 158, z: 112 }]) {
+  for (const s of SPOTS.filter((sp) => !sp.boatOnly && sp.id !== 'dermaga')) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 3, 6), mat(0x5b3a1e));
     post.position.set(s.x - 4, 1.5, s.z); post.castShadow = true;
     group.add(post); spotMarkers.push(post);
+    const lbl = makeLabel('🎣 Spot Mancing', 0.55);
+    lbl.position.set(s.x - 4, 3.6, s.z);
+    group.add(lbl);
+    placeLabels.push({ sprite: lbl, x: s.x - 4, z: s.z, range: 25 });
   }
 
   // --- Lost fishing rod at Membuku (mission m3): a thin rod leaning on a palm.
@@ -751,8 +853,39 @@ export function buildWorld(scene) {
   parkedCar.position.set(180, 1.2, 45); parkedCar.rotation.y = 0.15;
   group.add(parkedCar);
   // Colourful boats moored alongside the pier.
-  const pb1 = makeBoat(0xe74c3c); pb1.position.set(196, 0.4, 30); pb1.rotation.y = 0.2; group.add(pb1);
-  const pb2 = makeBoat(0x27ae60); pb2.position.set(214, 0.4, 56); pb2.rotation.y = -0.2; group.add(pb2);
+  const pb1 = makeBoat(0xe74c3c); pb1.position.set(196, SEA_Y + 0.1, 30); pb1.rotation.y = 0.2; group.add(pb1);
+  const pb2 = makeBoat(0x27ae60); pb2.position.set(214, SEA_Y + 0.1, 56); pb2.rotation.y = -0.2; group.add(pb2);
+
+  // --- Free small boat (sampan, item 7): beached near Loji Pantai, free to
+  // board via AKSI. Fragile — sinks past the buoy line (x = FREE_BOAT_MAX_X).
+  const sampan = makeSampan();
+  sampan.position.set(168, SEA_Y, 66);
+  group.add(sampan);
+  const sampanLabel = makeLabel('🛶 Perahu Kecil — GRATIS', 0.55);
+  sampanLabel.position.y = 2.6;
+  sampan.add(sampanLabel);
+  placeLabels.push({ sprite: sampanLabel, x: 168, z: 66, range: 25 });
+  const freeBoat = { mesh: sampan, x: 168, z: 66, home: { x: 168, z: 66 }, boarded: false, sunk: false };
+
+  // --- Buoy line (item 7): red-white balls marking the free boat's limit.
+  const buoys = [];
+  for (let bz = -156; bz <= 156; bz += 12) {
+    const buoy = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 6), mat(((bz / 12) % 2 === 0) ? 0xe74c3c : 0xecf0f1));
+    buoy.position.set(FREE_BOAT_MAX_X, SEA_Y, bz);
+    group.add(buoy);
+    buoys.push(buoy);
+  }
+
+  // --- Giant ship "KM Titanik Ereke" (item 10): moored beside the pier at
+  // Ereke harbour. Boarded via AKSI once bought (Rp 100.000.000).
+  const titanicMesh = makeTitanic();
+  titanicMesh.position.set(205, SEA_Y, 58);
+  group.add(titanicMesh);
+  const titanicLabel = makeLabel('🚢 Kapal Raksasa', 0.6);
+  titanicLabel.position.y = 10.5;
+  titanicMesh.add(titanicLabel);
+  placeLabels.push({ sprite: titanicLabel, x: 205, z: 58, range: 30 });
+  const titanic = { mesh: titanicMesh, x: 205, z: 58, home: { x: 205, z: 58 }, boarded: false };
 
   // 2) Jembatan Kayu Bone: ~75 m historic wooden truss bridge over the river
   // on Jalan Poros Ereke toward Pantai Bone/Malalanda. Weathered planks, gaps,
@@ -1152,7 +1285,7 @@ export function buildWorld(scene) {
       const head = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 6), mat(0x8d6e63)); head.position.y = 1.9; g.add(head);
       const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.05, 1.4, 5), mat(0x5d4037));
       tail.position.set(-0.6, 1.2, 0); tail.rotation.z = 0.9; g.add(tail);
-    } else if (def.id === 'buaya') {
+    } else if (def.id === 'buaya' || def.id === 'buaya-danau') {
       const body = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.6, 1.0), mat(0x33691e)); body.position.y = 0.45; g.add(body);
       const jaw = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.25, 0.8), mat(0x558b2f)); jaw.position.set(2.0, 0.35, 0); g.add(jaw);
       const tail = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.6, 5), mat(0x33691e));
@@ -1210,18 +1343,60 @@ export function buildWorld(scene) {
     lampLights.push(pl);
   }
 
-  return { group, colliders, sea, seaBase, seaGeo, boats, lostRod, walkways, vehicles, pickups, raceRings, racePoints, raceSign: { x: -110, z: -56 }, salons, board: { x: 2, z: 18 }, coconuts, chests, gather, monsters, placeLabels, lampHeadMat, lampLights };
+  // --- Road lamps along Jalan Poros (item 8): same shared head material
+  // (emissive at night, like the village lamps), NO extra PointLights for
+  // phone performance. On the LAND side of the road (x=150), clear of the
+  // roadside houses (x=144) and of both bridges (Lasora z≈-140, Bone z≈150).
+  // Heads are a little bigger (r 0.55) so they read from a moving motorbike.
+  const roadLampZ = [-160, -110, -85, -60, -35, -10, 15, 40, 65, 90, 115, 165];
+  const roadLampExtra = [[24, 33], [44, 37]]; // Ereke↔Loji road (main route from spawn)
+  for (const lz of roadLampZ) {
+    const lamp = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 4.2, 6), mat(0x37474f));
+    pole.position.y = 2.1; pole.castShadow = true; lamp.add(pole);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), lampHeadMat);
+    head.position.y = 4.4; lamp.add(head);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.65, 0.35, 8), mat(0x37474f));
+    cap.position.y = 4.9; lamp.add(cap);
+    lamp.position.set(150, groundHeight(150, lz), lz);
+    group.add(lamp);
+  }
+  for (const [lx, lz] of roadLampExtra) {
+    const lamp = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 4.2, 6), mat(0x37474f));
+    pole.position.y = 2.1; pole.castShadow = true; lamp.add(pole);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6), lampHeadMat);
+    head.position.y = 4.4; lamp.add(head);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.65, 0.35, 8), mat(0x37474f));
+    cap.position.y = 4.9; lamp.add(cap);
+    lamp.position.set(lx, groundHeight(lx, lz), lz);
+    group.add(lamp);
+  }
+
+  return { group, colliders, sea, seaBase, seaGeo, boats, lostRod, walkways, vehicles, pickups, raceRings, racePoints, raceSign: { x: -110, z: -56 }, salons, board: { x: 2, z: 18 }, coconuts, chests, gather, monsters, placeLabels, lampHeadMat, lampLights, buoys, freeBoat, titanic };
 }
 
 export function updateSea(world, t) {
   const pos = world.seaGeo.attributes.position;
   for (let i = 0; i < pos.count; i += 1) {
     const bx = world.seaBase[i * 3]; const bz = world.seaBase[i * 3 + 2];
-    pos.setY(i, Math.sin(bx * 0.12 + t * 1.4) * 0.25 + Math.cos(bz * 0.1 + t * 0.9) * 0.2);
+    // Wave troughs stay above the sand (SEA_Y 0.55, amplitude ±0.30).
+    pos.setY(i, Math.sin(bx * 0.12 + t * 1.4) * 0.18 + Math.cos(bz * 0.1 + t * 0.9) * 0.12);
   }
   pos.needsUpdate = true;
   world.seaGeo.computeVertexNormals();
-  world.boats.forEach((b, i) => { b.position.y = 0.4 + Math.sin(t * 1.2 + i * 2) * 0.15; b.rotation.z = Math.sin(t * 0.9 + i) * 0.03; });
+  // Boats float on the raised sea: beached boats stay low, boats in the
+  // water ride at SEA_Y + 0.1.
+  world.boats.forEach((b, i) => {
+    const base = b.position.x > SEA_X ? SEA_Y + 0.1 : 0.4;
+    b.position.y = base + Math.sin(t * 1.2 + i * 2) * 0.15; b.rotation.z = Math.sin(t * 0.9 + i) * 0.03;
+  });
+  // Buoy line bobs on the waves.
+  if (world.buoys) world.buoys.forEach((b, i) => { b.position.y = SEA_Y + Math.sin(t * 1.2 + i) * 0.12; });
+  // The free sampan and the giant ship bob at rest (not while boarded — the
+  // main loop drives them then).
+  if (world.freeBoat && !world.freeBoat.boarded) world.freeBoat.mesh.position.y = SEA_Y + Math.sin(t * 1.1) * 0.12;
+  if (world.titanic && !world.titanic.boarded) world.titanic.mesh.position.y = SEA_Y + Math.sin(t * 0.8) * 0.06;
   if (world.pickups) {
     world.pickups.forEach((p, i) => {
       if (p.taken) return;

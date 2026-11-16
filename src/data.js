@@ -1,7 +1,29 @@
 // data.js — all game content: fish, shop stock, missions, NPC lines, place facts.
 // World coordinates: x east (+) / west (-), z south (+) / north (-), metres. Sea is east (x > 170).
 export const WORLD = { minX: -230, maxX: 300, minZ: -165, maxZ: 165 };
-export const SEA_X = 170;
+export const SEA_X = 170; // tepi laut (pantai timur)
+export const SEA_Y = 0.55; // tinggi permukaan laut (batch 4: dinaikkan supaya ombak tak tembus pasir)
+export const SEA_MAX_X = 1200; // ujung laut yang diperluas (batch 4 item 9/10)
+export const TITANIC_DECK_Y = 3.65; // tinggi geladak Kapal Raksasa di atas permukaan laut
+// Batas jarak berlayar (koordinat x; jarak dari pantai = x − SEA_X). Perahu
+// gratis HANCUR kalau lewat batas; perahu beli didorong kembali ombak.
+export const FREE_BOAT_MAX_X = 230; // perahu kecil gratis: ~60 m dari pantai
+export const FREE_BOAT_WARN_X = 220; // peringatan 10 m sebelum batas
+export const BOAT_LIMIT_X = { 1: 320, 2: 470, 3: 770, 4: Infinity }; // kayu/motor/besar/raksasa
+export const BOAT_WARN_X = { 1: 310, 2: 460, 3: 760 }; // 10 m sebelum batas
+export const BOAT_WARN_TEXT = {
+  1: '🌊 Ombak besar! Perahu kayu ini hanya sampai sini — beli perahu motor/besar untuk berlayar lebih jauh.',
+  2: '🌊 Ombak besar! Perahu motor ini hanya sampai sini — beli perahu besar/kapal raksasa untuk berlayar lebih jauh.',
+  3: '🌊 Ombak besar! Perahu besar ini hanya sampai sini — beli Kapal Raksasa untuk berlayar lebih jauh.',
+};
+// Tabel ikan menurut jarak dari pantai saat memancing dari perahu
+// (x − SEA_X): Dekat 0–60 m, Menengah 60–150 m, Jauh 150–300 m, Dalam 300 m+.
+export const BOAT_ZONE_TABLES = [
+  { name: 'Perairan Dangkal', toast: '', table: [['kembung', 4, 3], ['tongkol', 3, 2], ['baronang', 2, 2], ['udang', 2, 2], ['kerapu', 1, 1]] },
+  { name: 'Laut Menengah', toast: '🌊 Laut Menengah — ikan sedang ada di sini!', table: [['kerapu', 4, 3], ['kakap', 3, 2], ['cumi', 2, 2], ['tongkol', 2, 2], ['baronang', 1, 1]] },
+  { name: 'Laut Jauh', toast: '🌊 Laut Jauh — ikan besar ada di sini!', table: [['tuna', 4, 3], ['kakap', 3, 2], ['kerapu', 2, 2], ['marlin', 1, 1], ['napoleon', 1, 1]] },
+  { name: 'Laut Dalam', toast: '🌊 Zona Laut Dalam — ikan terbesar ada di sini!', table: [['marlin', 4, 3], ['pari', 3, 2], ['tuna', 2, 2], ['napoleon', 2, 2], ['hiu', 1, 1], ['mola', 1, 1]] },
+];
 export const TOTAL_DAYS = 7;
 export const DAY_START_MIN = 6 * 60; // 06:00
 export const DAY_END_MIN = 22 * 60; // 22:00
@@ -19,6 +41,9 @@ export const FISH = [
   { id: 'tuna', name: 'Ikan Tuna', price: 45000, rarity: 'Langka', desc: 'Hanya di tengah laut, dari atas perahu.' },
   { id: 'marlin', name: 'Ikan Marlin', price: 75000, rarity: 'Legendaris', desc: 'Raja Laut Banda. Hanya malam, dari perahu.' },
   { id: 'pari', name: 'Ikan Pari Emas', price: 80000, rarity: 'Legendaris', desc: 'Berenang saat senja di Pantai Membuku.' },
+  { id: 'napoleon', name: 'Ikan Napoleon', price: 100000, rarity: 'Langka', desc: 'Ikan karang besar laut dalam. Hanya di zona jauh dari pantai.' },
+  { id: 'hiu', name: 'Hiu Karang', price: 150000, rarity: 'Legendaris', desc: 'Hiu karang laut dalam. Hanya di zona terdalam — tangkap dari kapal besar.' },
+  { id: 'mola', name: 'Ikan Mola-Mola', price: 200000, rarity: 'Legendaris', desc: 'Ikan raksasa laut dalam. Sangat langka — hanya dari Kapal Raksasa di laut dalam.' },
 ];
 export const FISH_BY_ID = Object.fromEntries(FISH.map((f) => [f.id, f]));
 
@@ -32,7 +57,13 @@ export const SPOTS = [
   { id: 'danau', name: 'Danau Pasarambolaea', x: -88, z: 78, table: [['lele', 5, 3], ['gurame', 3, 2]] },
   { id: 'laut', name: 'Tengah Laut Banda', x: 235, z: 10, boatOnly: true, table: [['tuna', 5, 3], ['cumi', 2, 3], ['marlin', 0, 2], ['kakap', 1, 2]] },
   { id: 'dermaga', name: 'Ujung Dermaga Ereke', x: 228, z: 43, table: [['tongkol', 5, 3], ['kerapu', 3, 2], ['cumi', 1, 3], ['kakap', 1, 2]] },
-  { id: 'jembatan-bone', name: 'Jembatan Kayu Bone', x: 151, z: 150, table: [['lele', 3, 2], ['kembung', 4, 3], ['baronang', 2, 2], ['udang', 2, 2]] },
+  { id: 'jembatan-bone', name: 'Jembatan Kayu Bone', x: 151, z: 157, table: [['lele', 3, 2], ['kembung', 4, 3], ['baronang', 2, 2], ['udang', 2, 2]] }, // river bank by the bridge, clear of the Buaya Sungai at (151,146)
+  { id: 'danau-utara', name: 'Tepi Utara Danau', x: -118, z: 46, table: [['lele', 5, 3], ['gurame', 3, 2]] },
+  { id: 'danau-selatan', name: 'Tepi Selatan Danau', x: -118, z: 120, table: [['lele', 4, 3], ['gurame', 4, 2]] },
+  { id: 'danau-barat', name: 'Tepi Barat Danau', x: -156, z: 82, table: [['lele', 5, 2], ['gurame', 2, 2]] },
+  { id: 'sungai-tengah', name: 'Tengah Sungai Bone', x: 120, z: 150, table: [['lele', 4, 3], ['kembung', 3, 2], ['baronang', 2, 2], ['udang', 1, 1]] },
+  { id: 'sungai-muara', name: 'Muara Sungai Bone', x: 160, z: 150, table: [['lele', 3, 2], ['kembung', 4, 3], ['baronang', 3, 2], ['udang', 2, 2]] },
+  { id: 'jembatan-lasora', name: 'Jembatan Lasora', x: 172, z: -140, table: [['kembung', 4, 3], ['tongkol', 3, 2], ['cumi', 1, 2]] },
 ];
 
 export const SHOP_ITEMS = [
@@ -48,28 +79,32 @@ export const HOUSES = [
 ];
 export const RENT_PRICE = 2000; // kamar sewa di Ereke, per malam
 export const BOATS = [
-  { id: 'boat1', tier: 1, name: 'Perahu Kayu', price: 500000, desc: 'Perahu nelayan kayu. Cukup untuk memancing di tengah laut.' },
-  { id: 'boat2', tier: 2, name: 'Perahu Motor', price: 900000, desc: 'Mesin tempel, lebih cepat. Ikan langka lebih sering menggigit.' },
-  { id: 'boat3', tier: 3, name: 'Kapal Besar', price: 1500000, desc: 'Kapal besar tercepat. Peluang terbaik untuk ikan legendaris.' },
+  { id: 'boat1', tier: 1, name: 'Perahu Kayu', price: 500000, desc: 'Perahu nelayan kayu. Cukup untuk memancing di tengah laut. Jarak tempuh: 150 m dari pantai.' },
+  { id: 'boat2', tier: 2, name: 'Perahu Motor', price: 900000, desc: 'Mesin tempel, lebih cepat. Ikan langka lebih sering menggigit. Jarak tempuh: 300 m dari pantai.' },
+  { id: 'boat3', tier: 3, name: 'Kapal Besar', price: 1500000, desc: 'Kapal besar tercepat. Peluang terbaik untuk ikan legendaris. Jarak tempuh: 600 m dari pantai.' },
+  { id: 'boat4', tier: 4, name: '🚢 Kapal Raksasa', price: 100000000, desc: 'Kapal sebesar Titanic — lambung panjang, geladak bertingkat, 2 cerobong asap. Kapal terbesar di Ereke. Jarak tempuh: tanpa batas.' },
 ];
 
 export const MISSIONS = [
   // MUDAH — same village, Rp 10.000–25.000
-  { id: 'm1', tier: 'Mudah', giver: 'Bu Sari', title: 'Kerapu untuk Warung', text: 'Warungku kehabisan kerapu! Bawakan 3 Ikan Kerapu, ya.', need: { fish: 'kerapu', count: 3 }, reward: 25000, energy: 20, done: 'Terima kasih! Warung ramai lagi berkat kamu.' },
-  { id: 'm2', tier: 'Mudah', giver: 'Pak Laode', title: 'Tongkol Segar', text: 'Anakku minta tongkol bakar. Tangkap 1 Ikan Tongkol untukku.', need: { fish: 'tongkol', count: 1 }, reward: 20000, energy: 10, done: 'Tongkolnya segar sekali. Kamu nelayan sungguhan!' },
-  { id: 'm5', tier: 'Mudah', giver: 'Nelayan Muda', title: 'Kelapa untuk Es Kelapa', text: 'Aku mau jualan es kelapa. Kumpulkan 3 kelapa di Pantai Membuku!', need: { coconuts: 3 }, reward: 15000, energy: 10, done: 'Es kelapanya laris! Ini upahmu.' },
+  // kind: 'utama' = main chain (one per rank, sequential), 'sampingan' = optional.
+  // rank/rankMin: the player rank needed to accept the mission.
+  { id: 'm1', kind: 'utama', rank: 'Pemula', rankMin: 1, tier: 'Mudah', giver: 'Bu Sari', place: 'Warung, Kota Ereke', title: 'Kerapu untuk Warung', text: 'Warungku kehabisan kerapu! Bawakan 3 Ikan Kerapu, ya.', need: { fish: 'kerapu', count: 3 }, reward: 25000, energy: 20, done: 'Terima kasih! Warung ramai lagi berkat kamu.' },
+  { id: 'm2', kind: 'utama', rank: 'Junior', rankMin: 10, tier: 'Mudah', giver: 'Pak Laode', place: 'Pelabuhan Ereke', title: 'Tongkol Segar', text: 'Anakku minta tongkol bakar. Tangkap 1 Ikan Tongkol untukku.', need: { fish: 'tongkol', count: 1 }, reward: 20000, energy: 10, done: 'Tongkolnya segar sekali. Kamu nelayan sungguhan!' },
+  { id: 'm5', kind: 'sampingan', rank: 'Pemula', rankMin: 1, tier: 'Mudah', giver: 'Nelayan Muda', place: 'Pantai Membuku', title: 'Kelapa untuk Es Kelapa', text: 'Aku mau jualan es kelapa. Kumpulkan 3 kelapa di Pantai Membuku!', need: { coconuts: 3 }, reward: 15000, energy: 10, done: 'Es kelapanya laris! Ini upahmu.' },
   // SEDANG — nearby village/beach, Rp 25.000–75.000
-  { id: 'm3', tier: 'Sedang', giver: 'Pak Budi', title: 'Joran yang Hilang', text: 'Joranku tertinggal di Pantai Membuku, dekat pohon kelapa. Cari, lalu kembalikan padaku.', need: { find: 'rod', at: 'membuku' }, reward: 30000, energy: 20, done: 'Itu dia joran kesayanganku! Kamu baik sekali.' },
-  { id: 'm4', tier: 'Sedang', giver: 'Imam Haji', title: 'Kakap untuk Kenduri', text: 'Masjid mengadakan kenduri malam Jumat. Kami butuh 1 Ikan Kakap.', need: { fish: 'kakap', count: 1 }, reward: 40000, energy: 15, done: 'Semoga berkah. Kenduri kita jadi meriah.' },
-  { id: 'm6', tier: 'Sedang', giver: 'Ibu Linsowu', title: 'Tongkol untuk Linsowu', text: 'Desa kami mengadakan makan bersama. Bawakan 3 Ikan Tongkol ke Linsowu.', need: { fish: 'tongkol', count: 3 }, reward: 50000, energy: 15, done: 'Warga Linsowu senang sekali. Terima kasih!' },
+  { id: 'm3', kind: 'sampingan', rank: 'Junior', rankMin: 10, tier: 'Sedang', giver: 'Pak Budi', place: 'Desa Loji Pantai', title: 'Joran yang Hilang', text: 'Joranku tertinggal di Pantai Membuku, dekat pohon kelapa. Cari, lalu kembalikan padaku.', need: { find: 'rod', at: 'membuku' }, reward: 30000, energy: 20, done: 'Itu dia joran kesayanganku! Kamu baik sekali.' },
+  { id: 'm4', kind: 'utama', rank: 'Senior', rankMin: 20, tier: 'Sedang', giver: 'Imam Haji', place: 'Masjid Al Muhadjirin, Ereke', title: 'Kakap untuk Kenduri', text: 'Masjid mengadakan kenduri malam Jumat. Kami butuh 1 Ikan Kakap.', need: { fish: 'kakap', count: 1 }, reward: 40000, energy: 15, done: 'Semoga berkah. Kenduri kita jadi meriah.' },
+  { id: 'm6', kind: 'sampingan', rank: 'Senior', rankMin: 20, tier: 'Sedang', giver: 'Ibu Linsowu', place: 'Desa Linsowu', title: 'Tongkol untuk Linsowu', text: 'Desa kami mengadakan makan bersama. Bawakan 3 Ikan Tongkol ke Linsowu.', need: { fish: 'tongkol', count: 3 }, reward: 50000, energy: 15, done: 'Warga Linsowu senang sekali. Terima kasih!' },
   // SULIT — far village / mid-sea rare fish, Rp 75.000–200.000 + rare item
-  { id: 'm7', tier: 'Sulit', giver: 'Nelayan Bone', title: 'Tuna untuk Malalanda', text: 'Pesta di Malalanda butuh 1 Ikan Tuna dari tengah laut. Berani?', need: { fish: 'tuna', count: 1 }, reward: 100000, energy: 20, rareBait: 1, done: 'Tuna segar dari laut dalam! Kamu memang legenda.' },
-  { id: 'm8', tier: 'Sulit', giver: 'Nelayan Bone', title: 'Marlin Tengah Laut', text: 'Katanya ada Marlin raksasa di Laut Banda. Tangkap 1 untukku — hadiah besar menanti.', need: { fish: 'marlin', count: 1 }, reward: 200000, energy: 25, rareBait: 1, done: 'MARLIN! Seluruh desa membicarakanmu sekarang!' },
+  { id: 'm7', kind: 'utama', rank: 'Master', rankMin: 30, tier: 'Sulit', giver: 'Nelayan Bone', place: 'Desa Malalanda', title: 'Tuna untuk Malalanda', text: 'Pesta di Malalanda butuh 1 Ikan Tuna dari tengah laut. Berani?', need: { fish: 'tuna', count: 1 }, reward: 100000, energy: 20, rareBait: 1, done: 'Tuna segar dari laut dalam! Kamu memang legenda.' },
+  { id: 'm8', kind: 'utama', rank: 'Grandmaster', rankMin: 40, tier: 'Sulit', giver: 'Nelayan Bone', place: 'Desa Malalanda', title: 'Marlin Tengah Laut', text: 'Katanya ada Marlin raksasa di Laut Banda. Tangkap 1 untukku — hadiah besar menanti.', need: { fish: 'marlin', count: 1 }, reward: 200000, energy: 25, rareBait: 1, done: 'MARLIN! Seluruh desa membicarakanmu sekarang!' },
   // Forest missions — defeat monsters (tap-to-attack, rod = weapon).
-  { id: 'm9', tier: 'Mudah', giver: 'Pak Budi', title: 'Usir Babi Hutan', text: 'Babi hutan merusak kebun warga di Hutan Loji! Usir dia (kalahkan dengan pancinganmu).', need: { monster: 'babi' }, reward: 20000, energy: 10, done: 'Kebun aman lagi. Terima kasih!' },
-  { id: 'm10', tier: 'Sedang', giver: 'Nelayan Bone', title: 'Ular Penjaga Peti', text: 'Ada ular menjaga peti harta di Hutan Loji. Kalahkan dia, petinya jadi milikmu.', need: { monster: 'ular' }, reward: 50000, energy: 15, fragment: 1, done: 'Ularnya kabur! Peti itu sekarang aman digali.' },
-  { id: 'm11', tier: 'Sedang', giver: 'Ibu Linsowu', title: 'Buah Tanpa Diganggu Kera', text: 'Kera hutan selalu mengganggu saat memetik buah. Kalahkan kera itu dulu!', need: { monster: 'kera' }, reward: 60000, energy: 15, done: 'Sekarang bisa memetik buah dengan tenang!' },
-  { id: 'm12', tier: 'Sulit', giver: 'Pak Laode', title: 'Kalahkan Buaya Sungai', text: 'Buaya besar di sungai bawah Jembatan Kayu Bone menakut-nakuti warga. Kalahkan dia!', need: { monster: 'buaya' }, reward: 150000, energy: 25, rareBait: 1, done: 'Sungai aman lagi! Kamu pahlawan Ereke!' },
+  { id: 'm9', kind: 'sampingan', rank: 'Pemula', rankMin: 1, tier: 'Mudah', giver: 'Pak Budi', place: 'Desa Loji Pantai', title: 'Usir Babi Hutan', text: 'Babi hutan merusak kebun warga di Hutan Loji! Usir dia (kalahkan dengan pancinganmu).', need: { monster: 'babi' }, reward: 20000, energy: 10, done: 'Kebun aman lagi. Terima kasih!' },
+  { id: 'm10', kind: 'sampingan', rank: 'Junior', rankMin: 10, tier: 'Sedang', giver: 'Nelayan Bone', place: 'Desa Malalanda', title: 'Ular Penjaga Peti', text: 'Ada ular menjaga peti harta di Hutan Loji. Kalahkan dia, petinya jadi milikmu.', need: { monster: 'ular' }, reward: 50000, energy: 15, fragment: 1, done: 'Ularnya kabur! Peti itu sekarang aman digali.' },
+  { id: 'm11', kind: 'sampingan', rank: 'Senior', rankMin: 20, tier: 'Sedang', giver: 'Ibu Linsowu', place: 'Desa Linsowu', title: 'Buah Tanpa Diganggu Kera', text: 'Kera hutan selalu mengganggu saat memetik buah. Kalahkan kera itu dulu!', need: { monster: 'kera' }, reward: 60000, energy: 15, done: 'Sekarang bisa memetik buah dengan tenang!' },
+  { id: 'm12', kind: 'utama', rank: 'Legenda', rankMin: 50, tier: 'Sulit', giver: 'Pak Laode', place: 'Pelabuhan Ereke', title: 'Kalahkan Buaya Sungai', text: 'Buaya besar di sungai bawah Jembatan Kayu Bone menakut-nakuti warga. Kalahkan dia!', need: { monster: 'buaya' }, reward: 150000, energy: 25, rareBait: 1, done: 'Sungai aman lagi! Kamu pahlawan Ereke!' },
+  { id: 'm13', kind: 'utama', rank: 'Dewa', rankMin: 100, tier: 'Sulit', giver: 'Pak Budi', place: 'Desa Loji Pantai', title: 'Raja Hutan Terakhir', text: 'Raja Hutan Lv50 mengancam seluruh desa! Kalahkan dia dan jadilah legenda sejati Ereke.', need: { monster: 'raja' }, reward: 500000, energy: 25, rareBait: 2, fragment: 2, done: 'Raja Hutan tumbang! Ereke aman — kamu memang Dewa Nelayan!' },
 ];
 
 // Paid work jobs ("kerja") — repeatable income alongside fishing.
@@ -98,6 +133,7 @@ export const MONSTERS = [
   { id: 'ular', name: 'Ular Hutan', level: 12, threat: 'Sedang', threatColor: 0xf1c40f, hp: 120, x: -88, z: 136, reward: 50000, xp: 120, fragment: 1 },
   { id: 'kera', name: 'Kera Hutan', level: 18, threat: 'Sedang', threatColor: 0xf1c40f, hp: 150, x: -75, z: 145, reward: 60000, xp: 150, steals: true },
   { id: 'buaya', name: 'Buaya Sungai', level: 30, threat: 'Tinggi', threatColor: 0xe67e22, hp: 300, x: 151, z: 146, reward: 150000, xp: 300, rareBait: 1 },
+  { id: 'buaya-danau', name: 'Buaya Danau', level: 28, threat: 'Tinggi', threatColor: 0xe67e22, hp: 280, x: -95, z: 108, reward: 120000, xp: 260, rareBait: 1 },
   { id: 'raja', name: 'Raja Hutan', level: 50, threat: 'Bahaya', threatColor: 0xe74c3c, hp: 800, x: -112, z: 152, reward: 300000, xp: 600, fragment: 2 },
 ];
 export const THREAT_DAMAGE = { Rendah: 5, Sedang: 8, Tinggi: 12, Bahaya: 18 };
@@ -113,7 +149,7 @@ export const DANGER_ZONES = [
 // Rod damage scales with rod tier (8 + rod*6); the rest are fixed tiers.
 export const HELD_ITEMS = [
   { id: 'rod', icon: '🎣', name: 'Pancing', note: 'memancing' },
-  { id: 'hand', icon: '✋', name: 'Tangan kosong', note: 'dmg 6' },
+  { id: 'hand', icon: '👊', name: 'Tangan kosong', note: 'dmg 6' },
   { id: 'pisau', icon: '🔪', name: 'Pisau', note: 'dmg 24' },
   { id: 'pedang', icon: '🗡️', name: 'Pedang', note: 'dmg 32' },
   { id: 'obor', icon: '🔥', name: 'Obor', note: 'dmg 16 · cahaya hangat' },

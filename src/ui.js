@@ -1,6 +1,7 @@
 // ui.js — DOM HUD, dialogs, minimap and touch controls (Indonesian UI).
 // The 3D scene stays in the canvas; everything the player reads or clicks is DOM.
 import { WORLD, PLACES, FISH, fmtRp, fmtClock, levelFromXp, levelTitle, DANGER_ZONES } from './data.js';
+import { MAIN_CHAIN, missionUnlocked, nextMainMission, missionProgress, jobProgress } from './missions.js';
 
 export const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
 
@@ -107,7 +108,7 @@ export function drawMinimap(ui, player, visited, places, waypoint) {
   ctx.fillStyle = '#2a9db5';
   ctx.beginPath(); ctx.arc(sx(-118), sy(82), 34 * s, 0, 7); ctx.fill();
   // Coast road.
-  ctx.strokeStyle = '#c9a86a'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#4a4f55'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(sx(155), sy(-165)); ctx.lineTo(sx(155), sy(165)); ctx.stroke();
   // Danger zones: thin red dashed circles (no label — the minimap is small).
   for (const z of DANGER_ZONES) {
@@ -230,7 +231,7 @@ export function drawFullMap(ui, player, places, waypoint) {
     ctx.fillStyle = '#2a9db5'; ctx.beginPath(); ctx.arc(sx(-118), sy(82), 34 * base, 0, 7); ctx.fill(); // lake
     ctx.fillStyle = '#3fae9e'; ctx.fillRect(sx(100), sy(146), 75 * base, 8 * base); // river to Bone
     // Roads: coast road + hill road.
-    ctx.strokeStyle = '#c9a86a'; ctx.lineWidth = Math.max(2, 4 * base);
+    ctx.strokeStyle = '#4a4f55'; ctx.lineWidth = Math.max(2, 4 * base);
     ctx.beginPath(); ctx.moveTo(sx(155), sy(-165)); ctx.lineTo(sx(155), sy(165)); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(sx(-110), sy(-56)); ctx.lineTo(sx(-185), sy(-60)); ctx.stroke();
     // Inland roads between villages (mirror of ROADS in src/world.js).
@@ -309,23 +310,40 @@ export function collectionHTML(player) {
     const got = !!player.caught[f.id];
     return `<div class="fish-row ${got ? 'got' : ''}"><span>${got ? '🐟' : '❓'}</span><b>${got ? f.name : '???'}</b><span class="rar ${f.rarity === 'Legendaris' ? 'leg' : f.rarity === 'Langka' ? 'rare' : ''}">${f.rarity}</span><span>${got ? fmtRp(f.price) : '—'}</span><span>${player.fish[f.id] || 0}x</span></div>`;
   }).join('');
-  return `<h2>📖 Buku Koleksi Ikan</h2><p>Tangkap semua 12 spesies untuk menjadi Nelayan Legendaris Ereke.</p><div class="fish-list">${rows}</div><button class="btn" data-close>Tutup (C)</button>`;
+  return `<h2>📖 Buku Koleksi Ikan</h2><p>Tangkap 12 spesies untuk menjadi Nelayan Legendaris Ereke.</p><div class="fish-list">${rows}</div><button class="btn" data-close>Tutup (C)</button>`;
 }
 
-export function missionsHTML(missions, player) {
+export function missionsHTML(missions, player, jobs = []) {
   const tierEmoji = { Mudah: '🟢 Mudah', Sedang: '🟡 Sedang', Sulit: '🔴 Sulit' };
-  const rows = missions.map((m) => {
-    const have = m.need.fish ? (player.fish[m.need.fish] || 0) : (m.need.coconuts ? (player.coconuts || 0) : (m.need.monster ? ((player.defeated && player.defeated[m.need.monster]) ? 1 : 0) : (m.foundRod ? 1 : 0)));
-    const need = m.need.count || m.need.coconuts || 1;
-    const st = m.status === 'done' ? '✅ Selesai' : m.status === 'active' ? `🔶 Aktif (${have}/${need})` : '⚪ Belum diambil';
-    return `<div class="fish-row"><b>${m.title}</b><span>${tierEmoji[m.tier] || m.tier}</span><span>${m.giver}</span><span>${st}</span><span>${fmtRp(m.reward)}${m.rareBait ? ' +🎁' : ''}</span></div>`;
+  const next = nextMainMission(missions);
+  const row = (m) => {
+    const prog = missionProgress(m, player);
+    const lock = m.status === 'available' ? missionUnlocked(m, missions, player) : { ok: true, reason: '' };
+    const st = m.status === 'done' ? '✅ Selesai'
+      : m.status === 'active' ? `🔶 Aktif (${prog.have}/${prog.need})`
+      : !lock.ok ? lock.reason
+      : '⚪ Belum diambil';
+    const isNext = next && next.id === m.id && m.status !== 'done';
+    return `<div class="fish-row mission-row ${m.status === 'done' ? 'done' : ''} ${isNext ? 'next' : ''} ${!lock.ok ? 'locked' : ''}"><b>${isNext ? '➡️ ' : ''}${m.title}</b><span>${tierEmoji[m.tier] || m.tier}</span><span>${m.giver} · ${m.place || ''}</span><span>${st}</span><span>${fmtRp(m.reward)}${m.rareBait ? ' +🎁' : ''}${m.fragment ? ' +🧩' : ''}</span></div>`;
+  };
+  const main = MAIN_CHAIN.map((id) => missions.find((m) => m.id === id)).filter(Boolean);
+  const side = missions.filter((m) => m.kind !== 'utama');
+  const jobRows = (jobs || []).map((j) => {
+    const prog = jobProgress(j, player);
+    const st = j.status === 'active' ? `🔶 Aktif (${prog.have}/${prog.need})` : '⚪ Tersedia (bisa diulang)';
+    return `<div class="fish-row"><b>${j.title}</b><span>💼 Kerja</span><span>${j.giver}</span><span>${st}</span><span>${fmtRp(j.reward)}</span></div>`;
   }).join('');
-  return `<h2>📜 Misi Desa</h2><p>Bicara dengan warga (${IS_TOUCH ? 'ketuk AKSI di dekat mereka' : 'tekan E di dekat mereka'}) untuk mengambil misi. 🟢 Mudah Rp 10–25rb · 🟡 Sedang Rp 25–75rb · 🔴 Sulit Rp 75–200rb + hadiah langka.</p><div class="fish-list">${rows}</div><button class="btn" data-close>Tutup</button>`;
+  return `<h2>📜 Misi Desa</h2><p>🎯 <b>Tujuan:</b> Jadi <b>Nelayan Legendaris Ereke</b>! Tangkap <b>12 jenis ikan dalam 7 hari</b> (itu syarat menang), selesaikan <b>Misi Utama</b> satu per satu, dan raih gelar <b>Dewa</b>.</p>
+  <h3>⭐ Misi Utama (Wajib) — selesaikan berurutan, satu per tingkatan</h3><div class="fish-list">${main.map(row).join('')}</div>
+  <h3>🌿 Misi Sampingan — opsional, boleh diambil kalau tingkatanmu cukup</h3><div class="fish-list">${side.map(row).join('')}</div>
+  ${jobRows ? `<h3>💼 Kerja — upah harian, bisa diulang</h3><div class="fish-list">${jobRows}</div>` : ''}
+  <p><small>Bicara dengan warga (${IS_TOUCH ? 'ketuk AKSI di dekat mereka' : 'tekan E di dekat mereka'}) untuk mengambil misi. 🟢 Mudah Rp 10–25rb · 🟡 Sedang Rp 25–75rb · 🔴 Sulit Rp 75–200rb + hadiah langka.</small></p><button class="btn" data-close>Tutup</button>`;
 }
 
 /** Touch controls: virtual joystick (left), camera drag (right half), big action button. */
 export function setupTouch(ui) {
   if (!IS_TOUCH) return;
+  document.body.classList.add('touch'); // CSS moves the held button left, etc.
   ui.touch.style.display = 'block';
   const joy = ui.joy; const knob = ui.joyKnob;
   let joyId = null; let camId = null; let lastX = 0; let lastY = 0;

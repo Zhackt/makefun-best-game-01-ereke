@@ -1,8 +1,58 @@
 // missions.js — village quests (3 tiers) + paid work jobs ("kerja", repeatable).
-import { MISSIONS, JOBS } from './data.js';
+import { MISSIONS, JOBS, levelFromXp } from './data.js';
+
+// The main chain: one mission per rank, in order. A main mission unlocks
+// only after the previous one is done AND the player's rank is high enough.
+export const MAIN_CHAIN = ['m1', 'm2', 'm4', 'm7', 'm8', 'm12', 'm13'];
 
 export function createMissions() {
   return MISSIONS.map((m) => ({ ...m, status: 'available', foundRod: false }));
+}
+
+/** Can this mission be accepted right now? Returns { ok, reason }. */
+export function missionUnlocked(m, missions, player) {
+  const lv = levelFromXp(player.xp || 0);
+  if (lv < (m.rankMin || 1)) return { ok: false, reason: `🔒 Butuh ${m.rank} (Lv ${m.rankMin})` };
+  if (m.kind === 'utama') {
+    const idx = MAIN_CHAIN.indexOf(m.id);
+    if (idx > 0) {
+      const prev = missions.find((x) => x.id === MAIN_CHAIN[idx - 1]);
+      if (prev && prev.status !== 'done') return { ok: false, reason: `🔒 Selesaikan dulu: ${prev.title}` };
+    }
+  }
+  return { ok: true, reason: '' };
+}
+
+/** The next main mission in the chain (first one not done yet). */
+export function nextMainMission(missions) {
+  for (const id of MAIN_CHAIN) {
+    const m = missions.find((x) => x.id === id);
+    if (m && m.status !== 'done') return m;
+  }
+  return null;
+}
+
+/** The active main mission (the one the tracker follows), if any. */
+export function activeMainMission(missions) {
+  for (const id of MAIN_CHAIN) {
+    const m = missions.find((x) => x.id === id);
+    if (m && m.status === 'active') return m;
+  }
+  return null;
+}
+
+/** HUD tracker text: always tells the player what the next main mission is. */
+export function missionTracker(missions, player) {
+  const active = activeMainMission(missions);
+  if (active) {
+    const p = missionProgress(active, player);
+    return { text: `⭐ Misi Utama: ${active.title} — ${p.have}/${p.need}`, done: false };
+  }
+  const next = nextMainMission(missions);
+  if (!next) return { text: '🏆 Semua Misi Utama selesai! Kamu Nelayan Legendaris sejati!', done: true };
+  const lock = missionUnlocked(next, missions, player);
+  if (!lock.ok) return { text: `⭐ Misi berikutnya: ${next.title} — ${lock.reason}`, done: false };
+  return { text: `⭐ Misi berikutnya: ${next.title} — bicara dengan ${next.giver} (${next.place})`, done: false };
 }
 
 export function missionProgress(m, player) {
@@ -18,7 +68,11 @@ export function canTurnIn(m, player) {
   return m.status === 'active' && p.have >= p.need;
 }
 
-export function acceptMission(m) { if (m.status === 'available') m.status = 'active'; }
+export function acceptMission(m, missions, player) {
+  if (m.status !== 'available') return false;
+  if (missions && player && !missionUnlocked(m, missions, player).ok) return false;
+  m.status = 'active'; return true;
+}
 
 export function turnIn(m, player) {
   if (!canTurnIn(m, player)) return false;

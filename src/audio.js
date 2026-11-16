@@ -42,6 +42,8 @@ export function sfxBite(a) { tone(a, 1200, 0.08, 'square', 0.08); tone(a, 1500, 
 export function sfxCoin(a) { tone(a, 880, 0.12, 'square', 0.07); tone(a, 1320, 0.2, 'square', 0.07, 0.09); }
 export function sfxCatch(a) { tone(a, 523, 0.12, 'triangle', 0.12); tone(a, 659, 0.12, 'triangle', 0.12, 0.1); tone(a, 784, 0.25, 'triangle', 0.12, 0.2); }
 export function sfxFail(a) { tone(a, 220, 0.25, 'sawtooth', 0.08, 0, -80); }
+// Crash: a big wave hits and wood breaks — a low boom + a cracking snap + a splash.
+export function sfxCrash(a) { tone(a, 90, 0.5, 'sawtooth', 0.14, 0, -50); tone(a, 300, 0.12, 'square', 0.1, 0.05, -180); tone(a, 500, 0.3, 'sine', 0.1, 0.15, -300); }
 export function sfxTalk(a) { tone(a, 660, 0.08, 'sine', 0.08); tone(a, 520, 0.08, 'sine', 0.06, 0.08); }
 export function sfxSleep(a) { tone(a, 392, 0.3, 'sine', 0.08); tone(a, 330, 0.3, 'sine', 0.08, 0.25); tone(a, 262, 0.5, 'sine', 0.08, 0.5); }
 export function sfxFanfare(a) {

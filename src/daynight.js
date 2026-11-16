@@ -10,6 +10,10 @@ export function createClock() {
 
 export function updateClock(clock, dt) {
   clock.minutes += MIN_PER_SEC * dt;
+  // The clock STOPS at 22:00 (deep night) until the player sleeps: the day
+  // only advances via sleepAt → endDay. This keeps the minutes bounded and
+  // the day-end choice popup from firing every frame (batch 4, item 11).
+  if (clock.minutes > DAY_END_MIN) clock.minutes = DAY_END_MIN;
   return clock.minutes >= DAY_END_MIN;
 }
 

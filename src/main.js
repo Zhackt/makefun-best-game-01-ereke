@@ -4,15 +4,15 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { createScene } from './scene.js';
 import { buildWorld, updateSea, groundHeight, makePlayerMesh, makeHeldMesh } from './world.js';
-import { createPlayer, placePlayer, updatePlayer, updateCamera, addFish, collectionCount, sellAllFish, skinEffect, surfaceY, blockedAt } from './player.js';
+import { createPlayer, placePlayer, updatePlayer, updateCamera, addFish, collectionCount, sellAllFish, skinEffect, surfaceY, blockedAt, waterAt, boatDeckY } from './player.js';
 import { createFishing, startCast, updateFishing, cancelFishing } from './fishing.js';
 import { shopList, buyItem, boatList, buyBoat, fishPrices } from './shop.js';
-import { createMissions, missionProgress, canTurnIn, acceptMission, turnIn, doneCount, missionXp, createJobs, jobProgress, canJobTurnIn, acceptJob, jobTurnIn } from './missions.js';
+import { createMissions, missionProgress, canTurnIn, acceptMission, turnIn, doneCount, missionXp, createJobs, jobProgress, canJobTurnIn, acceptJob, jobTurnIn, missionUnlocked, nextMainMission, missionTracker } from './missions.js';
 import { createNPCs, npcNear, npcLine } from './npcs.js';
 import { createClock, updateClock, endDay, clockText, applyDayNight } from './daynight.js';
-import { createAudio, sfxSplash, sfxCoin, sfxCatch, sfxFail, sfxTalk, sfxSleep, sfxFanfare, sfxStep, sfxHurt, sfxSlash, sfxBite, updateAmbient } from './audio.js';
+import { createAudio, sfxSplash, sfxCoin, sfxCatch, sfxFail, sfxTalk, sfxSleep, sfxFanfare, sfxStep, sfxHurt, sfxSlash, sfxBite, sfxCrash, updateAmbient } from './audio.js';
 import { createUI, updateHUD, setPrompt, showToast, showBanner, updateTimers, showPanel, hidePanel, showEnd, hideEnd, drawMinimap, drawFullMap, setupFullMap, collectionHTML, missionsHTML, setupTouch, IS_TOUCH } from './ui.js';
-import { SPOTS, PLACES, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, SHOP_SKINS, THREAT_DAMAGE, HELD_ITEMS, WEAPON_DMG, WEAPONS, isNight, levelFromXp, levelTitle } from './data.js';
+import { SPOTS, PLACES, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, SHOP_SKINS, THREAT_DAMAGE, HELD_ITEMS, WEAPON_DMG, WEAPONS, isNight, levelFromXp, levelTitle, SEA_X, SEA_Y, FREE_BOAT_MAX_X, FREE_BOAT_WARN_X, BOAT_LIMIT_X, BOAT_WARN_X, BOAT_WARN_TEXT, BOAT_ZONE_TABLES } from './data.js';
 import { readBest, saveBest, readRaceBest, saveRaceBest, saveGame, loadGame, clearSave, readLogin, writeLogin, readEvent, writeEvent } from './save.js';
 import { currentEvent, rivalsFor, playerRank, emptyEventState } from './events.js';
 import { HOUSES, RENT_PRICE } from './data.js';
@@ -340,7 +340,7 @@ function vehicleNear() {
 function openBoatShop() {
   screen = 'boatshop';
   const boats = boatList(player);
-  showPanel(ui, `<h2>⚓ Galangan Kapal — Pelabuhan Ereke</h2><p>Uangmu: <b>${fmtRp(player.money)}</b> · Perahu sekarang: <b>${player.boatTier ? ['—', 'Perahu Kayu', 'Perahu Motor', 'Kapal Besar'][player.boatTier] : 'belum punya'}</b><br>Beli perahu, lalu naik dari dermaga dengan tombol <b>B</b> untuk berlayar ke Tengah Laut Banda.</p>
+  showPanel(ui, `<h2>⚓ Galangan Kapal — Pelabuhan Ereke</h2><p>Uangmu: <b>${fmtRp(player.money)}</b> · Perahu sekarang: <b>${player.boatTier ? ['—', 'Perahu Kayu', 'Perahu Motor', 'Kapal Besar', 'Kapal Raksasa'][player.boatTier] : 'belum punya'}</b><br>Beli perahu, lalu naik dari dermaga dengan tombol <b>B</b> untuk berlayar ke Tengah Laut Banda.</p>
   ${boats.map((b) => `<div class="shop-item"><div><b>${b.name}</b><small>${b.desc} ${b.note ? '· ' + b.note : ''}</small></div><button class="btn" data-buyboat="${b.id}" ${b.owned ? 'disabled' : ''}>${b.owned ? 'Dimiliki' : fmtRp(b.price)}</button></div>`).join('')}
   <br><button class="btn ghost" data-close>Tutup (Esc)</button>`);
 }
@@ -383,7 +383,11 @@ function openNpc(npc) {
   let missionHtml = '';
   for (const m of missions.filter((x) => x.giver === npc.name)) {
     const prog = missionProgress(m, player);
-    if (m.status === 'available') missionHtml += `<p>📜 <b>${m.title}</b> <small>${tierEmoji[m.tier]}</small><br>${m.text}<br>Hadiah: ${fmtRp(m.reward)}${m.rareBait ? ' +🎁 umpan langka' : ''}${m.fragment ? ' +🧩 fragmen' : ''}</p><button class="btn" data-accept="${m.id}">Terima Misi</button>`;
+    if (m.status === 'available') {
+      const lock = missionUnlocked(m, missions, player);
+      if (!lock.ok) missionHtml += `<p>📜 <b>${m.title}</b> <small>${tierEmoji[m.tier]}</small><br>${m.text}<br><span style="opacity:.7">${lock.reason} — selesaikan misi sebelumnya / naik level dulu.</span></p>`;
+      else missionHtml += `<p>📜 <b>${m.title}</b> <small>${tierEmoji[m.tier]}</small><br>${m.text}<br>Hadiah: ${fmtRp(m.reward)}${m.rareBait ? ' +🎁 umpan langka' : ''}${m.fragment ? ' +🧩 fragmen' : ''}</p><button class="btn" data-accept="${m.id}">Terima Misi</button>`;
+    }
     else if (m.status === 'active' && canTurnIn(m, player)) missionHtml += `<p>📜 <b>${m.title}</b> — selesai! (${prog.have}/${prog.need})</p><button class="btn" data-turnin="${m.id}">Serahkan (${fmtRp(m.reward)})</button>`;
     else if (m.status === 'active') missionHtml += `<p>📜 <b>${m.title}</b> — ${prog.have}/${prog.need}. ${m.text}</p>`;
     else missionHtml += `<p>📜 <b>${m.title}</b> — ✅ ${m.done}</p>`;
@@ -402,7 +406,7 @@ function openNpc(npc) {
 }
 
 function openBook() { screen = 'book'; showPanel(ui, collectionHTML(player)); }
-function openMissions() { screen = 'missions'; showPanel(ui, missionsHTML(missions, player)); }
+function openMissions() { screen = 'missions'; showPanel(ui, missionsHTML(missions, player, jobs)); }
 
 function closePanel() {
   hidePanel(ui);
@@ -467,6 +471,54 @@ function applySave(s) {
 }
 
 /** Sleep in a bed: saves the game (Stardew-style) and starts the next day. */
+let sleepChoiceOpen = false; // a sleep-choice modal is open: the game is paused
+let sleepConfirmPoint = null; // bed for a manual-sleep confirmation (trySleep)
+let dayEndPromptShown = false; // day-end popup shown once per end of day
+let energyPromptShown = false; // energy-empty popup shown once per episode
+
+/** Sleep-choice modal (batch 4, item 11): sleeping is ALWAYS the player's
+    choice — never an automatic teleport from the middle of the sea. While
+    the modal is open the game is paused (frame loop skips the inGame block). */
+function showSleepModal(kind, point = null) {
+  sleepChoiceOpen = true;
+  sleepConfirmPoint = point;
+  const modal = document.getElementById('sleep-modal');
+  const title = document.getElementById('sleep-modal-title');
+  const text = document.getElementById('sleep-modal-text');
+  const sleepBtn = document.getElementById('sleep-modal-sleep');
+  const stayBtn = document.getElementById('sleep-modal-stay');
+  if (kind === 'confirm') {
+    title.textContent = '🛏️ Tidur sampai pagi?';
+    text.textContent = 'Tidur menyimpan game dan memulai hari berikutnya.';
+    sleepBtn.textContent = '😴 Ya, Tidur';
+    stayBtn.textContent = 'Batal';
+  } else if (kind === 'energy') {
+    title.textContent = '😴 Energimu habis — mau pulang dan tidur?';
+    text.textContent = 'Energi 0: kamu masih bisa jalan kaki pulang sendiri, tapi tidak bisa memancing atau beraksi yang butuh energi. Tidur memulihkan energi dan menyimpan game.';
+    sleepBtn.textContent = '😴 Pulang & Tidur — Simpan';
+    stayBtn.textContent = '🌙 Lanjutkan main';
+  } else {
+    title.textContent = '🌙 Hari sudah berakhir — mau tidur?';
+    text.textContent = 'Jam sudah 22:00. Tidur menyimpan game dan memulai hari berikutnya. Kalau lanjut main, jam berhenti di 22:00 sampai kamu tidur.';
+    sleepBtn.textContent = '😴 Pulang & Tidur — Simpan';
+    stayBtn.textContent = '🌙 Lanjutkan main';
+  }
+  if (document.pointerLockElement) document.exitPointerLock();
+  modal.style.display = 'flex';
+}
+
+function closeSleepModal(choice) {
+  document.getElementById('sleep-modal').style.display = 'none';
+  const point = sleepConfirmPoint;
+  sleepChoiceOpen = false;
+  sleepConfirmPoint = null;
+  if (choice === 'sleep') {
+    if (point) sleepAt(point);
+    else sleep(); // chosen: teleport home is fine, the player asked for it
+  }
+  // 'stay': no teleport, no save, no day change — the player keeps playing.
+}
+
 function sleepAt(point) {
   cancelFishing(fishing);
   sfxSleep(audio);
@@ -488,14 +540,22 @@ function sleepAt(point) {
   if (race) { race = null; document.getElementById('race-timer').style.display = 'none'; }
   for (const v of world.vehicles) { v.x = v.home.x; v.z = v.home.z; v.yaw = 0.6; v.mesh.position.set(v.x, 0, v.z); }
   for (const p of world.pickups) { p.taken = false; p.mesh.visible = true; }
+  // Boats reset to harbour/beach; the player is never left swimming or aboard.
+  if (player.onBoat) { player.onBoat = false; player.freeBoat = false; player.titanic = false; }
+  player.swimming = false;
+  player._freeWarned = false; player._boatWarned = false; player._boatPushed = false; player._boatZone = 0;
+  if (world.freeBoat) { world.freeBoat.boarded = false; world.freeBoat.x = world.freeBoat.home.x; world.freeBoat.z = world.freeBoat.home.z; world.freeBoat.mesh.position.set(world.freeBoat.home.x, SEA_Y, world.freeBoat.home.z); world.freeBoat.mesh.visible = true; }
+  if (world.titanic) { world.titanic.boarded = false; world.titanic.x = world.titanic.home.x; world.titanic.z = world.titanic.home.z; world.titanic.mesh.position.set(world.titanic.home.x, SEA_Y, world.titanic.home.z); }
   const over = endDay(clock);
+  dayEndPromptShown = false; energyPromptShown = false; // a new day: popups may fire again
   saveGame(snapshot());
   if (over) { showToast(ui, 'Hari ke-7 berakhir...'); return endGame(false); }
   placePlayer(player, point.x, point.z, world.colliders);
   showToast(ui, `💾 Tersimpan! Selamat pagi, Hari ${clock.day}. 🐟 Ikan Hari Ini: ${fotd().fish.name} di ${fotd().spot.name} (3x)!`);
 }
 
-/** Collapse / day-end: wake up at home the next morning (also saves). */
+/** Collapse / day-end: wake up at home the next morning (also saves).
+    Only ever called from the sleep-choice modal, i.e. the player chose it. */
 function sleep() {
   sleepAt({ id: 'home', name: 'Rumahmu di Loji Pantai', x: 58, z: 52 });
 }
@@ -506,7 +566,48 @@ function trySleep() {
     showToast(ui, '🛏️ Belum ada tempat tidur di sini. Rumahmu di Desa Loji Pantai — atau sewa kamar di Ereke (Rp 2.000/malam).');
     return;
   }
-  sleepAt(point);
+  // Manual sleep is an explicit choice too: confirm before saving + next day.
+  showSleepModal('confirm', point);
+}
+
+// --- Boats (batch 4, items 7/9/10) ---
+function nearFreeBoat() {
+  const fb = world.freeBoat;
+  return fb && !fb.sunk && Math.hypot(fb.x - player.x, fb.z - player.z) < 5;
+}
+function nearTitanic() {
+  const tt = world.titanic;
+  return tt && Math.hypot(tt.x - player.x, tt.z - player.z) < 10;
+}
+/** Boat fishing zone by distance from the shore (x − SEA_X). */
+function boatZone(x) {
+  const d = x - SEA_X;
+  return d < 60 ? 0 : d < 150 ? 1 : d < 300 ? 2 : 3;
+}
+/** The fishing spot a boat cast uses: the zone table at the boat's position. */
+function boatZoneSpot(x) {
+  const z = boatZone(x);
+  return { id: 'boat-zone', name: `${BOAT_ZONE_TABLES[z].name} (${Math.max(0, Math.round(x - SEA_X))} m dari pantai)`, boatOnly: true, table: BOAT_ZONE_TABLES[z].table };
+}
+function sinkFreeBoat() {
+  const fb = world.freeBoat;
+  sfxCrash(audio); sfxSplash(audio);
+  showToast(ui, '💥 Perahu kecilmu hancur kena ombak besar!');
+  player.onBoat = false; player.freeBoat = false; player._freeWarned = false;
+  player.x = FREE_BOAT_MAX_X - 4; // the player ends up swimming just inside the limit
+  // The sampan respawns at the beach, ready to use again.
+  fb.boarded = false; fb.sunk = false;
+  fb.x = fb.home.x; fb.z = fb.home.z;
+  fb.mesh.visible = true;
+  fb.mesh.position.set(fb.home.x, SEA_Y, fb.home.z);
+  fb.mesh.rotation.y = 0;
+}
+/** Step off a boat into the water: the player swims, the boat stays put. */
+function disembarkToSwim() {
+  player.onBoat = false;
+  if (player.freeBoat) { player.freeBoat = false; if (world.freeBoat) world.freeBoat.boarded = false; }
+  if (player.titanic) { player.titanic = false; if (world.titanic) world.titanic.boarded = false; }
+  showToast(ui, '🏊 Turun dari perahu — berenang kembali ke tepi!');
 }
 
 function nearBank() { return Math.hypot(player.x + 14, player.z - 10) < 10; }
@@ -538,6 +639,7 @@ function startGame() {
   document.getElementById('settings-popup').style.display = 'none'; // never leave settings open over the game
   document.getElementById('title-screen').style.display = 'none';
   hideEnd(ui); hidePanel(ui);
+  setHeld(player.held); // sync the held pil, the AKSI icon and SERANG with what is held
   player.mesh.visible = true; // the title shot hides the hero for a clean scene
   screen = 'play';
   showToast(ui, `🐟 Ikan Hari Ini: ${fotd().fish.name} di ${fotd().spot.name} — harga 3x!`);
@@ -562,6 +664,11 @@ function resetGame() {
   for (const c of world.chests) { c.revealed = false; c.taken = false; c.mesh.visible = false; }
   visited = new Set(['loji']); currentPlace = null;
   world.lostRod.visible = true;
+  // Sleep-choice state + boats back to their home spots.
+  sleepChoiceOpen = false; sleepConfirmPoint = null; dayEndPromptShown = false; energyPromptShown = false;
+  document.getElementById('sleep-modal').style.display = 'none';
+  if (world.freeBoat) { world.freeBoat.boarded = false; world.freeBoat.x = world.freeBoat.home.x; world.freeBoat.z = world.freeBoat.home.z; world.freeBoat.mesh.position.set(world.freeBoat.home.x, SEA_Y, world.freeBoat.home.z); world.freeBoat.mesh.visible = true; }
+  if (world.titanic) { world.titanic.boarded = false; world.titanic.x = world.titanic.home.x; world.titanic.z = world.titanic.home.z; world.titanic.mesh.position.set(world.titanic.home.x, SEA_Y, world.titanic.home.z); }
   startGame();
 }
 
@@ -633,6 +740,14 @@ function doAction() {
     return true;
   }
   if (fishing.state === 'waiting') { showToast(ui, 'Sabar... tunggu gigitan!'); return true; }
+  // Step off a boat: near the shore AKSI docks / steps off (the only
+  // disembark on a phone, which has no B key); far out at sea AKSI fishes
+  // instead — sail back toward shore to get off.
+  if (player.onBoat && player.x < 190) {
+    if (player.freeBoat || player.titanic) disembarkToSwim();
+    else { player.onBoat = false; placePlayer(player, 160, player.z, world.colliders); showToast(ui, '⚓ Turun dari perahu.'); }
+    return true;
+  }
   // Motorbike race at the foot of Bukit Lamoliandu.
   if (nearRaceSign()) {
     if (race) { showToast(ui, 'Balapan sedang berjalan!'); return true; }
@@ -666,6 +781,19 @@ function doAction() {
   if (veh) {
     player.riding = veh.kind; player.vehicle = veh;
     showToast(ui, IS_TOUCH ? `Naik ${veh.name}! Joystick untuk jalan. Ketuk AKSI untuk turun.` : `Naik ${veh.name}! WASD / joystick untuk jalan. E untuk turun.`);
+    return true;
+  }
+  if (nearFreeBoat() && !player.onBoat && !player.riding) {
+    player.onBoat = true; player.freeBoat = true;
+    world.freeBoat.boarded = true;
+    showToast(ui, '🛶 Naik Perahu Kecil (Gratis)! Hati-hati — jangan terlalu jauh, ombak besar bisa menghancurkannya.');
+    return true;
+  }
+  if (nearTitanic() && !player.onBoat && !player.riding) {
+    if (player.boatTier < 4) { showToast(ui, '🚢 Kapal Raksasa itu milik yang membelinya (Rp 100.000.000 di Galangan Kapal).'); return true; }
+    player.onBoat = true; player.titanic = true;
+    world.titanic.boarded = true;
+    showToast(ui, '🚢 Naik Kapal Raksasa! Berlayarlah ke laut dalam.');
     return true;
   }
   if (nearBoatShop()) {
@@ -735,10 +863,15 @@ function doAction() {
     if (clock.minutes >= 18 * 60) { showToast(ui, '🔒 Pasar Ereke tutup jam 18:00. Buka lagi besok pagi!'); return true; }
     openShop(); return true;
   }
-  const spot = spotNearPlayer();
+  // Fishing spot: from a boat the player can cast anywhere — the zone table
+  // at the boat's distance from shore decides the fish. On foot, the nearest
+  // shore spot within 9 m.
+  const spot = player.onBoat ? boatZoneSpot(player.x) : spotNearPlayer();
   if (spot) {
     // Only the fishing rod can cast: anything else in hand gets a reminder.
     if (player.held !== 'rod') { showToast(ui, '🎣 Pegang pancing dulu buat mancing'); return true; }
+    // No fishing while swimming — climb out first.
+    if (player.swimming) { showToast(ui, '🏊 Naik ke darat dulu buat mancing!'); return true; }
     if (startCast(fishing, spot, player)) { sfxSplash(audio); showToast(ui, `Memancing di ${spot.name}...`); }
     else showToast(ui, 'Energi habis! Tidur dulu (T).');
   }
@@ -749,6 +882,9 @@ function doAction() {
 window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+  // While a sleep-choice modal is open the game is paused: only Escape closes
+  // it (as "Lanjutkan main" — never a teleport, never a save).
+  if (sleepChoiceOpen) { if (k === 'escape') closeSleepModal('stay'); return; }
   if (k === 'n') { audio.muted = !audio.muted; showToast(ui, audio.muted ? '🔇 Suara mati' : '🔊 Suara hidup'); return; }
   if (k === 'm' && (screen === 'play' || screen === 'map')) {
     if (screen === 'play') openMap();
@@ -783,9 +919,13 @@ window.addEventListener('keydown', (e) => {
       player.onBoat = true;
       placePlayer(player, onPier ? 200 : 185, onPier ? 58 : 45, world.colliders);
       showToast(ui, '⛵ Berlayar! Arahkan ke Tengah Laut Banda.');
+    } else if (player.onBoat && (player.freeBoat || player.titanic)) {
+      disembarkToSwim(); // B always drops the player in the water from these two
     } else if (player.onBoat && player.x < 190) {
       player.onBoat = false; placePlayer(player, 160, player.z, world.colliders);
       showToast(ui, '⚓ Turun dari perahu.');
+    } else if (player.onBoat) {
+      disembarkToSwim(); // far out at sea: swim back (owned boats too)
     } else if (!player.boatTier) showToast(ui, 'Kamu belum punya perahu. Beli di Galangan Kapal, Pelabuhan Ereke.');
   }
 });
@@ -804,7 +944,7 @@ document.addEventListener('mousemove', (e) => {
   }
 });
 document.addEventListener('pointerlockchange', () => {
-  if (document.pointerLockElement !== canvas && screen === 'play' && !IS_TOUCH) {
+  if (document.pointerLockElement !== canvas && screen === 'play' && !IS_TOUCH && !sleepChoiceOpen) {
     screen = 'paused';
     showPanel(ui, `<h2>⏸ Jeda</h2><p>Klik Lanjut untuk bermain lagi.</p><button class="btn" data-close>Lanjut Bermain</button>`);
   }
@@ -922,12 +1062,28 @@ ui.panelBody.addEventListener('click', (e) => {
     if (msg.startsWith('Berhasil')) sfxCoin(audio);
     openBoatShop();
   } else if (t.hasAttribute('data-accept')) {
-    acceptMission(missions.find((m) => m.id === t.dataset.accept));
-    showToast(ui, '📜 Misi diterima! Cek dengan tombol V.');
+    const m = missions.find((x) => x.id === t.dataset.accept);
+    if (!acceptMission(m, missions, player)) {
+      const lock = missionUnlocked(m, missions, player);
+      showToast(ui, lock.reason || 'Misi itu belum bisa diambil.');
+    } else showToast(ui, '📜 Misi diterima! Cek dengan tombol V.');
     openNpc(currentNpc);
   } else if (t.hasAttribute('data-turnin')) {
     const m = missions.find((x) => x.id === t.dataset.turnin);
-    if (turnIn(m, player)) { sfxCoin(audio); gainXp(missionXp(m)); showToast(ui, `✅ Misi selesai! +${fmtRp(m.reward)} · +${missionXp(m)} XP${m.rareBait ? ' · +🎁 umpan langka' : ''}`); maybeRevealChest(); }
+    if (turnIn(m, player)) {
+      sfxCoin(audio); gainXp(missionXp(m));
+      showToast(ui, `✅ Misi selesai! +${fmtRp(m.reward)} · +${missionXp(m)} XP${m.rareBait ? ' · +🎁 umpan langka' : ''}`);
+      maybeRevealChest();
+      // Main chain: always tell the player what the NEXT mission is.
+      if (m.kind === 'utama') {
+        const next = nextMainMission(missions);
+        if (!next) showBanner(ui, '🏆 Semua Misi Utama selesai!', 'Kamu Nelayan Legendaris sejati!');
+        else {
+          const lock = missionUnlocked(next, missions, player);
+          showBanner(ui, `⭐ Misi Berikutnya: ${next.title}`, lock.ok ? `${next.giver} — ${next.place}` : lock.reason);
+        }
+      }
+    }
     openNpc(currentNpc);
   }
 });
@@ -984,6 +1140,12 @@ document.getElementById('settings-btn').addEventListener('click', () => { docume
 document.getElementById('settings-close').addEventListener('click', () => { document.getElementById('settings-popup').style.display = 'none'; });
 document.getElementById('settings-popup').addEventListener('click', (e) => { if (e.target.id === 'settings-popup') e.target.style.display = 'none'; });
 
+// Sleep-choice modal buttons (item 11): the player always chooses.
+document.getElementById('sleep-modal-sleep').addEventListener('click', () => closeSleepModal('sleep'));
+document.getElementById('sleep-modal-stay').addEventListener('click', () => closeSleepModal('stay'));
+// Mission tracker (item 12): tap the bar to open the mission panel.
+document.getElementById('mission-tracker').addEventListener('click', () => { if (screen === 'play') openMissions(); });
+
 // Continue a saved game (sleeping in a bed saves): show the button only when a save exists.
 const existingSave = loadGame();
 if (existingSave) {
@@ -1018,11 +1180,14 @@ function updateHeldMesh() {
   if (m) { m.name = 'heldItem'; player.mesh.add(m); }
 }
 
-/** Switch the held item: button label, SERANG visibility, hand mesh. */
+/** Switch the held item: button label, SERANG visibility, hand mesh, and the
+    AKSI button icon (batch 4, item 13: the AKSI icon follows what is held —
+    🎣 only while holding the rod, 👊 for empty hands, 🔪/🗡️/🪵/🔥/🔦 else). */
 function setHeld(id) {
   player.held = id;
   const item = HELD_ITEMS.find((h) => h.id === id) || HELD_ITEMS[0];
   ui.heldBtn.textContent = `${item.icon} ${item.name}`;
+  if (ui.actionBtn) ui.actionBtn.innerHTML = `${item.icon}<br>AKSI`;
   ui.attackBtn.style.display = WEAPONS.has(id) ? 'block' : 'none';
   updateHeldMesh();
   if (ui.heldPanel) ui.heldPanel.style.display = 'none';
@@ -1030,9 +1195,9 @@ function setHeld(id) {
   document.querySelectorAll('.held-row').forEach((r) => r.classList.toggle('sel', r.dataset.held === id));
 }
 
-/** Jump: vertical velocity, on foot only (never on a vehicle/boat, never fishing). */
+/** Jump: vertical velocity, on foot only (never on a vehicle/boat, never fishing, never swimming). */
 function tryJump() {
-  if (screen !== 'play' || fishing.state !== 'idle' || player.riding || player.onBoat || player.airY > 0) return;
+  if (screen !== 'play' || fishing.state !== 'idle' || player.riding || player.onBoat || player.swimming || player.airY > 0) return;
   player.vy = 9;
 }
 
@@ -1052,7 +1217,9 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock3.getDelta(), 0.05);
   elapsed += dt;
-  const inGame = screen === 'play';
+  // Paused while a sleep-choice modal is open (item 11): the player chooses,
+  // nothing moves, nothing attacks, the clock stops.
+  const inGame = screen === 'play' && !sleepChoiceOpen;
 
   if (inGame) {
     // Touch joystick -> synthetic WASD keys, but ONLY while the stick is actually
@@ -1075,12 +1242,13 @@ function frame() {
     // (an old save, a dismount, a teleport), push them out to the nearest
     // free spot at once — walking out of a solid box is impossible, so a
     // stuck player would otherwise be soft-locked with no way out.
-    if (!player.riding && !player.onBoat && blockedAt(player.x, player.z, false, world.colliders, player.walkways)) {
+    if (!player.riding && !player.onBoat && !player.swimming && blockedAt(player.x, player.z, false, world.colliders, player.walkways)) {
       placePlayer(player, player.x, player.z, world.colliders);
     }
     const holding = keys.has(' ') || !!ui.actionHeld;
     const prevFishState = fishing.state;
-    updateFishing(fishing, dt, clock.minutes, player.rod, player.boatTier || 1, holding, skinEffect(player, 'fishSpeed'), skinEffect(player, 'rare'));
+    // Kapal Raksasa: peluang ikan langka/legendaris 1.5x (item 10).
+    updateFishing(fishing, dt, clock.minutes, player.rod, player.boatTier || 1, holding, skinEffect(player, 'fishSpeed'), skinEffect(player, 'rare') * (player.titanic ? 1.5 : 1));
     if (prevFishState === 'waiting' && fishing.state === 'bite') sfxBite(audio); // the fish bites: reel in NOW
     // Footsteps: a soft thud per half walk-cycle, on foot only (never on a
     // vehicle/boat, never while fishing or standing still). Left/right alternate.
@@ -1166,8 +1334,12 @@ function frame() {
       }
     }
     world.raceRings.forEach((r) => { r.rotation.y += dt * 0.6; });
-    if (updateClock(clock, dt)) sleep();
-    if (player.energy <= 0) { showToast(ui, '😴 Energi habis! Kamu tertidur...'); sleep(); }
+    // Day end / empty energy: NEVER an automatic teleport (item 11). Ask the
+    // player instead — once per end of day / once per energy-empty episode.
+    // The clock is clamped at 22:00, so the day-end popup cannot re-fire.
+    if (updateClock(clock, dt) && !dayEndPromptShown) { dayEndPromptShown = true; showSleepModal('dayend'); }
+    if (player.energy <= 0 && !energyPromptShown) { energyPromptShown = true; showSleepModal('energy'); }
+    if (player.energy > 5) energyPromptShown = false; // energy recovered: may ask again later
     // Floating loot: scoop up crates/coconuts with the boat.
     if (player.onBoat) {
       for (const p of world.pickups) {
@@ -1180,6 +1352,44 @@ function frame() {
       }
     }
     placeCheck();
+    // --- Boat range limits, zone toasts, boat follow (batch 4, items 7/9/10).
+    if (player.onBoat) {
+      // The visible boat follows the player while aboard.
+      if (player.freeBoat && world.freeBoat) { const fb = world.freeBoat; fb.mesh.position.set(player.x, SEA_Y + Math.sin(elapsed * 1.2) * 0.1, player.z); fb.mesh.rotation.y = player.yaw; fb.x = player.x; fb.z = player.z; }
+      if (player.titanic && world.titanic) { const tt = world.titanic; tt.mesh.position.set(player.x, SEA_Y + Math.sin(elapsed * 0.8) * 0.06, player.z); tt.mesh.rotation.y = player.yaw; tt.x = player.x; tt.z = player.z; }
+      // Zone toasts: announce each new fishing zone once. Shown BEFORE the
+      // range warnings below, so a limit warning in the same frame wins the
+      // toast (the warning matters more than the zone name).
+      const zone = boatZone(player.x);
+      if (zone !== (player._boatZone || 0)) {
+        player._boatZone = zone;
+        if (zone > 0) showToast(ui, BOAT_ZONE_TABLES[zone].toast);
+      }
+      // Free sampan: warn once near the limit, sink past it (respawn at beach).
+      if (player.freeBoat) {
+        if (player.x > FREE_BOAT_WARN_X && !player._freeWarned) { player._freeWarned = true; showToast(ui, '⚠️ Ombak besar di depan! Perahu kecil ini gratis — jangan terlalu jauh, bisa hancur! Beli perahu di Pelabuhan Ereke untuk berlayar ke tengah laut.'); }
+        if (player.x < FREE_BOAT_WARN_X - 5) player._freeWarned = false;
+        if (player.x > FREE_BOAT_MAX_X) sinkFreeBoat();
+      } else if (player.boatTier > 0 && player.boatTier < 4) {
+        // Bought boats never sink: big waves push them back at their limit.
+        const lim = BOAT_LIMIT_X[player.boatTier];
+        const warnX = BOAT_WARN_X[player.boatTier];
+        if (player.x > warnX && !player._boatWarned) { player._boatWarned = true; showToast(ui, BOAT_WARN_TEXT[player.boatTier]); }
+        if (player.x < warnX - 5) player._boatWarned = false;
+        if (player.x > lim) {
+          player.x = lim;
+          if (!player._boatPushed) { player._boatPushed = true; showToast(ui, '🌊 Ombak besar mendorongmu kembali! Perahu ini tidak bisa lebih jauh.'); }
+        }
+        if (player.x < lim - 15) player._boatPushed = false;
+      }
+      // HUD: distance from the shore while on a boat.
+      const bd = document.getElementById('boat-dist');
+      if (bd) { bd.style.display = ''; bd.textContent = `🌊 ${Math.max(0, Math.round(player.x - SEA_X))} m dari pantai`; }
+    } else {
+      const bd = document.getElementById('boat-dist');
+      if (bd) bd.style.display = 'none';
+      player._boatZone = 0;
+    }
     // Context prompt. On a phone there is no E/F/Space key, so the action
     // prompts say "Ketuk AKSI" (or "Tahan AKSI" for the bite) instead.
     const act = IS_TOUCH ? 'Ketuk AKSI' : 'Tekan E / AKSI';
@@ -1203,8 +1413,14 @@ function frame() {
     else if (world.chests.find((c) => c.revealed && !c.taken && Math.hypot(c.x - player.x, c.z - player.z) < 4)) prompt = `${act}: Gali peti harta!`;
     else if (nearMarket()) prompt = `${act}: Pasar Ereke`;
     else if (nearHome()) prompt = IS_TOUCH ? 'Ketuk AKSI: Tidur (akhiri hari)' : 'Tekan T: Tidur (akhiri hari)';
+    else if (nearFreeBoat() && !player.onBoat) prompt = IS_TOUCH ? 'Ketuk AKSI: Naik Perahu Kecil (Gratis)' : 'Tekan E / AKSI: Naik Perahu Kecil (Gratis)';
+    else if (nearTitanic() && !player.onBoat) prompt = IS_TOUCH ? 'Ketuk AKSI: Naik Kapal Raksasa' : 'Tekan E / AKSI: Naik Kapal Raksasa';
+    else if (player.swimming) prompt = '🏊 Berenang — naik ke darat dulu buat mancing';
     else if (nearHarbour() && player.boatTier > 0 && !player.onBoat) prompt = 'Tekan B: Naik perahu';
-    else if (player.onBoat && player.x < 190) prompt = 'Tekan B: Turun dari perahu';
+    else if (player.onBoat && player.x < 190) prompt = IS_TOUCH ? 'Ketuk AKSI: Turun dari perahu' : 'Tekan B: Turun dari perahu';
+    else if (player.onBoat) prompt = player.held === 'rod'
+      ? (IS_TOUCH ? `Ketuk AKSI: Memancing di ${boatZoneSpot(player.x).name}` : `Tekan F / AKSI: Memancing di ${boatZoneSpot(player.x).name}`)
+      : '🎣 Pegang pancing dulu buat mancing';
     else {
       const s = spotNearPlayer();
       if (s) {
@@ -1223,7 +1439,7 @@ function frame() {
   const nightNow = isNight(clock.minutes);
   if (world.lampHeadMat) world.lampHeadMat.emissiveIntensity = nightNow ? 1.4 : 0;
   for (const l of world.lampLights || []) l.intensity = nightNow ? 50 : 0;
-  const gy = surfaceY(player.x, player.z, player.onBoat, player.walkways);
+  const gy = surfaceY(player.x, player.z, player.onBoat, player.walkways, boatDeckY(player));
   torchLight.intensity = (player.held === 'obor' && nightNow) ? 50 : 0;
   torchLight.position.set(player.x, gy + 2, player.z);
   const flOn = player.held === 'senter' && nightNow;
@@ -1232,11 +1448,18 @@ function frame() {
     flashLight.position.set(player.x, gy + 1.6, player.z);
     const fx = player.x - Math.sin(player.camYaw) * 10;
     const fz = player.z - Math.cos(player.camYaw) * 10;
-    flashLight.target.position.set(fx, surfaceY(fx, fz, player.onBoat, player.walkways) + 0.5, fz);
+    flashLight.target.position.set(fx, surfaceY(fx, fz, player.onBoat, player.walkways, boatDeckY(player)) + 0.5, fz);
   }
   updateSea(world, elapsed);
   updateCamera(player, camera, dt);
   updateHUD(ui, player, clock, fishing);
+  // Mission tracker (item 12): always show the active/next main mission.
+  const mt = document.getElementById('mission-tracker');
+  if (mt) {
+    const t = missionTracker(missions, player);
+    if (mt.textContent !== t.text) mt.textContent = t.text;
+    mt.classList.toggle('done', t.done);
+  }
   drawMinimap(ui, player, visited, PLACES, waypoint);
   updatePlaceLabels(world, player);
   // 3D waypoint arrow above the player + compass chip with live distance.
