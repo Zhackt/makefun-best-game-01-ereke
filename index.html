@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Butur Adventures — Jelajah Ereke, Buton Utara</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1e3a; font-family: system-ui, -apple-system, sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #hud { position: fixed; top: 10px; left: 10px; display: flex; gap: 8px; flex-wrap: wrap; z-index: 5; max-width: 60vw; }
+  .pill { background: rgba(12,24,38,.85); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 20px; padding: 7px 13px; font-size: 14px; font-weight: 600; }
+  .pill.gold { color: #f1c40f; }
+  #energy-wrap { display: flex; align-items: center; gap: 6px; }
+  #energy-bar { width: 90px; height: 10px; background: rgba(255,255,255,.2); border-radius: 5px; overflow: hidden; }
+  #energy-fill { height: 100%; width: 100%; background: #2ecc71; transition: width .3s; }
+  #minimap { position: fixed; top: 10px; right: 10px; width: 210px; height: 145px; border: 2px solid #f1c40f; border-radius: 8px; z-index: 5; cursor: pointer; background: #3d7a4a; }
+  #minimap-label { position: fixed; top: 158px; right: 12px; color: #fff; font-size: 11px; text-shadow: 0 1px 2px #000; z-index: 5; }
+  #map-btn { cursor: pointer; }
+  #fullmap { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 25; }
+  #map-box { width: min(960px, 96vw); background: #12283d; border: 2px solid #f1c40f; border-radius: 14px; padding: 14px; color: #fff; }
+  #map-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+  #map-head b { color: #f1c40f; font-size: 19px; }
+  #map-head span { font-size: 13px; opacity: .85; }
+  #mapcanvas { width: 100%; height: auto; border-radius: 8px; touch-action: none; cursor: grab; display: block; }
+  #map-controls { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  #banner { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); text-align: center; color: #fff; text-shadow: 0 2px 6px #000; z-index: 5; display: none; }
+  #banner b { font-size: 30px; display: block; }
+  #banner span { font-size: 15px; opacity: .9; }
+  #toast { position: fixed; bottom: 170px; left: 50%; transform: translateX(-50%); background: rgba(12,24,38,.9); color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 15px; z-index: 6; display: none; white-space: nowrap; }
+  #race-timer { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: #fff; padding: 8px 18px; border-radius: 20px; font-weight: 800; font-size: 17px; z-index: 6; display: none; }
+  #prompt { position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); background: #f1c40f; color: #1a1a1a; padding: 8px 16px; border-radius: 20px; font-weight: 700; font-size: 15px; z-index: 6; display: none; }
+  #fishbar { position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%); width: min(560px, 86vw); z-index: 7; display: none; text-align: center; }
+  #fish-label { color: #fff; font-weight: 700; text-shadow: 0 2px 4px #000; margin-bottom: 8px; font-size: 16px; }
+  #fish-track { position: relative; height: 26px; background: rgba(0,0,0,.65); border: 2px solid #fff; border-radius: 13px; overflow: hidden; }
+  #fish-zone { position: absolute; top: 0; height: 100%; background: #2ecc71; }
+  #fish-marker { position: absolute; top: -2px; width: 6px; height: 30px; background: #fff; border: 1px solid #000; }
+  #fish-progress-wrap { height: 10px; background: rgba(0,0,0,.65); border: 2px solid #fff; border-radius: 5px; overflow: hidden; margin-top: 6px; }
+  #fish-progress { height: 100%; width: 0%; background: #f1c40f; }
+  #waypoint-chip { position: fixed; top: 52px; left: 10px; background: rgba(12,24,38,.85); color: #ffd700; border: 1px solid rgba(255,215,0,.5); border-radius: 20px; padding: 6px 12px; font-size: 13px; font-weight: 700; z-index: 5; display: none; }
+  #panel { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 20; }
+  #panel-body { background: #12283d; color: #fff; border: 2px solid #f1c40f; border-radius: 14px; padding: 22px 26px; width: min(620px, 92vw); max-height: 84vh; overflow-y: auto; }
+  #panel-body h2 { margin: 0 0 6px; color: #f1c40f; }
+  #panel-body p { opacity: .9; line-height: 1.5; }
+  .btn { display: inline-block; background: #f1c40f; color: #1a1a1a; border: none; border-radius: 10px; padding: 11px 22px; font-size: 16px; font-weight: 800; cursor: pointer; margin: 6px 6px 0 0; }
+  .btn:hover { background: #ffe066; }
+  .btn.ghost { background: transparent; color: #fff; border: 2px solid #fff; }
+  .gender-btn { background: rgba(255,255,255,.12); color: #fff; border: 2px solid rgba(255,255,255,.4); border-radius: 12px; padding: 12px 20px; font-size: 17px; font-weight: 800; cursor: pointer; margin: 4px; }
+  .gender-btn.selected { background: #f1c40f; color: #1a1a1a; border-color: #fff; }
+  #level-pill { cursor: pointer; }
+  #login-popup, #rankup-popup { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
+  .popup-card { background: #12283d; color: #fff; border: 2px solid #f1c40f; border-radius: 14px; padding: 24px 28px; width: min(520px, 92vw); text-align: center; }
+  .popup-card h2 { color: #f1c40f; margin: 0 0 8px; }
+  .login-days { display: flex; gap: 6px; justify-content: center; margin: 14px 0; flex-wrap: wrap; }
+  .login-day { width: 56px; border: 2px solid rgba(255,255,255,.35); border-radius: 10px; padding: 8px 2px; font-size: 12px; }
+  .login-day.today { border-color: #f1c40f; background: rgba(241,196,15,.2); font-weight: 800; }
+  .login-day.claimed { opacity: .55; }
+  .confetti { position: absolute; top: -10px; font-size: 22px; animation: fall 3s linear infinite; }
+  @keyframes fall { to { transform: translateY(105vh) rotate(360deg); } }
+  .fish-row { display: flex; gap: 10px; align-items: center; padding: 7px 4px; border-bottom: 1px solid rgba(255,255,255,.12); font-size: 14px; }
+  .fish-row.got { color: #a9e5a0; }
+  .fish-list { margin: 10px 0; }
+  .rar { font-size: 12px; opacity: .8; }
+  .rar.rare { color: #7fb3ff; } .rar.leg { color: #ffb347; font-weight: 800; }
+  .shop-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid rgba(255,255,255,.12); }
+  .shop-item b { display: block; } .shop-item small { opacity: .8; }
+  #title-screen, #end-screen { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(11,30,58,.25), rgba(11,30,58,.85)); }
+  .card { text-align: center; color: #fff; max-width: 640px; padding: 30px; }
+  .card h1 { font-size: 54px; margin: 0; color: #f1c40f; text-shadow: 0 3px 0 #7a5b00, 0 6px 18px rgba(0,0,0,.6); }
+  .card h3 { font-size: 20px; margin: 6px 0 14px; font-weight: 500; opacity: .95; }
+  .card p { line-height: 1.6; opacity: .92; }
+  .card .keys { font-size: 14px; background: rgba(0,0,0,.4); border-radius: 10px; padding: 12px; text-align: left; display: inline-block; }
+  #end-screen { display: none; }
+  #touch { display: none; z-index: 8; }
+  #joy { position: fixed; left: 22px; bottom: 26px; width: 124px; height: 124px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.5); z-index: 8; }
+  #joy-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(241,196,15,.9); }
+  #action-btn { position: fixed; right: 24px; bottom: 40px; width: 92px; height: 92px; border-radius: 50%; background: #f1c40f; color: #1a1a1a; font-size: 17px; font-weight: 900; border: 3px solid #fff; z-index: 8; }
+  #help { position: fixed; bottom: 10px; left: 10px; color: rgba(255,255,255,.75); font-size: 12px; text-shadow: 0 1px 2px #000; z-index: 5; }
+  @media (max-width: 700px) { #minimap { width: 140px; height: 96px; } #minimap-label { top: 110px; } .card h1 { font-size: 38px; } #hud { max-width: 52vw; } .pill { font-size: 12px; padding: 5px 9px; } }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Ereke: game memancing 3D di Buton Utara"></canvas>
+<div id="hud">
+  <span class="pill gold" id="money">Rp 0</span>
+  <span class="pill" id="clock">Hari 1/7 · 06:00</span>
+  <span class="pill" id="energy-wrap"><span id="energy-text">Energi 100</span><span id="energy-bar"><span id="energy-fill"></span></span></span>
+  <span class="pill" id="collection">Ikan 0/12</span>
+  <span class="pill gold" id="level-pill" title="Profil & skin">⭐ Lv 1 · Pemula</span>
+  <button class="pill" id="map-btn" title="Buka peta (M)">🗺️ Peta</button>
+</div>
+<canvas id="minimap" width="210" height="145" title="Peta sekitar — klik untuk membuka peta besar"></canvas>
+<div id="minimap-label">Peta sekitar — klik untuk peta besar</div>
+<div id="fullmap">
+  <div id="map-box">
+    <div id="map-head"><b>🗺️ Peta Ereke — Buton Utara</b><span>Klik tempat untuk menandai tujuan (panah emas akan menunjuk arahnya). Seret untuk geser, roda/+/- / cubit untuk zoom.</span></div>
+    <canvas id="mapcanvas" width="900" height="560"></canvas>
+    <div id="map-controls">
+      <button class="btn" id="map-zoom-in">＋ Zoom</button>
+      <button class="btn" id="map-zoom-out">－ Zoom</button>
+      <button class="btn ghost" id="map-close">Tutup (M)</button>
+    </div>
+  </div>
+</div>
+<div id="banner"></div>
+<div id="waypoint-chip"></div>
+<div id="toast"></div>
+<div id="race-timer">🏁 0:00.0</div>
+<div id="prompt"></div>
+<div id="fishbar"><div id="fish-label"></div><div id="fish-track"><div id="fish-zone"></div><div id="fish-marker"></div></div><div id="fish-progress-wrap"><div id="fish-progress"></div></div></div>
+<div id="monster-bar" style="display:none;position:fixed;bottom:150px;left:50%;transform:translateX(-50%);width:min(420px,80vw);z-index:7;text-align:center"><div id="monster-name" style="color:#fff;font-weight:700;text-shadow:0 2px 4px #000;margin-bottom:4px;font-size:14px"></div><div style="height:12px;background:rgba(0,0,0,.65);border:2px solid #fff;border-radius:6px;overflow:hidden"><div id="monster-fill" style="height:100%;width:100%;background:#e74c3c"></div></div></div>
+<div id="panel"><div id="panel-body"></div></div>
+<div id="title-screen"><div class="card">
+  <h1>🌊 BUTUR<br>ADVENTURES</h1>
+  <h3>Jelajah Ereke, Buton Utara — Nelayan Legendaris</h3>
+  <p>Kamu bangun di <b>Desa Loji Pantai</b>. Laut Banda memanggil. Dalam <b>7 hari</b>, tangkap <b>12 spesies ikan</b> — dari Kembung sampai Pari Emas — jual di <b>Pasar Ereke</b>, beli joran dan perahu, dan bantu warga desa. Jadilah <b>Nelayan Legendaris Ereke</b>!</p>
+  <p class="keys">🎮 <b>WASD</b> jalan &nbsp;·&nbsp; <b>Mouse</b> putar kamera (klik untuk kunci) &nbsp;·&nbsp; <b>F</b> memancing &nbsp;·&nbsp; <b>Spasi</b> tarik saat zona hijau &nbsp;·&nbsp; <b>E</b> bicara / naik motor &amp; mobil &nbsp;·&nbsp; <b>M</b> peta besar (tandai tujuan) &nbsp;·&nbsp; <b>C</b> buku ikan &nbsp;·&nbsp; <b>V</b> misi &nbsp;·&nbsp; <b>T</b> tidur &nbsp;·&nbsp; <b>B</b> naik/turun perahu &nbsp;·&nbsp; <b>Esc</b> jeda &nbsp;·&nbsp; <b>N</b> suara<br>📱 Di HP: joystick kiri untuk jalan, geser kanan untuk kamera, tombol AKSI untuk memancing, tombol 🗺️ untuk peta.</p>
+  <p>👤 <b>Pilih karaktermu:</b></p>
+  <p><button class="gender-btn selected" data-gender="cowo">👦 Cowo</button> <button class="gender-btn" data-gender="cewe">👧 Cewe</button></p>
+  <button class="btn" id="start-btn">▶ Mulai Bermain</button>
+  <button class="btn ghost" id="continue-btn" style="display:none">↻ Lanjutkan</button>
+  <p id="best-line" style="font-size:14px"></p>
+</div></div>
+<div id="end-screen"><div class="card">
+  <h1 id="end-title"></h1>
+  <p id="end-text"></p>
+  <button class="btn" id="restart-btn">↻ Main Lagi</button>
+</div></div>
+<div id="login-popup"><div class="popup-card">
+  <h2>🎁 Hadiah Login Harian</h2>
+  <p id="login-text">Datang tiap hari untuk hadiah lebih besar! Kalau bolos sehari, streak kembali ke Hari 1.</p>
+  <div class="login-days" id="login-days"></div>
+  <button class="btn" id="login-claim">Klaim Hadiah</button>
+</div></div>
+<div id="rankup-popup"><div class="popup-card">
+  <h2>🎉 SELAMAT!</h2>
+  <p id="rankup-text"></p>
+  <button class="btn" id="rankup-close">Lanjutkan</button>
+</div></div>
+<div id="touch">
+  <div id="joy"><div id="joy-knob"></div></div>
+  <button id="action-btn">🎣<br>AKSI</button>
+</div>
+<div id="help">WASD jalan · Mouse kamera · F pancing · E bicara/naik kendaraan · B perahu · T tidur</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
