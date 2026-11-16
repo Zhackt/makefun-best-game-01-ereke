@@ -36,6 +36,7 @@ const audio = createAudio();
 const ui = createUI();
 const keys = new Set();
 let screen = 'title';
+document.body.classList.add('screen-title'); // hide HUD + touch controls while the title screen shows
 let visited = new Set(['loji']);
 let currentPlace = null;
 let currentNpc = null;
@@ -532,6 +533,8 @@ function endGame(win) {
 }
 
 function startGame() {
+  document.body.classList.remove('screen-title'); // HUD + touch controls return
+  document.getElementById('settings-popup').style.display = 'none'; // never leave settings open over the game
   document.getElementById('title-screen').style.display = 'none';
   hideEnd(ui); hidePanel(ui);
   player.mesh.visible = true; // the title shot hides the hero for a clean scene
@@ -731,6 +734,8 @@ window.addEventListener('keydown', (e) => {
   if (screen === 'title' && (k === 'enter' || k === ' ')) { startGame(); return; }
   if ((screen === 'win' || screen === 'lose') && (k === 'enter' || k === ' ')) { resetGame(); return; }
   if (k === 'escape' || k === 'p') {
+    const sp = document.getElementById('settings-popup');
+    if (sp && sp.style.display === 'flex') { sp.style.display = 'none'; return; }
     if (screen === 'haggle') { cancelHaggle(); openShop(); return; }
     if (screen === 'map') { closeMap(); return; }
     if (screen === 'play') { screen = 'paused'; showPanel(ui, `<h2>⏸ Jeda</h2><p>${clockText(clock)} · ${fmtRp(player.money)} · Ikan ${collectionCount(player)}/12</p><button class="btn" data-close>Lanjut Bermain</button><button class="btn ghost" data-restart>Mulai dari Awal</button>`); }
@@ -924,6 +929,11 @@ setupTouch(ui);
 
 document.getElementById('start-btn').addEventListener('click', startGame);
 document.getElementById('restart-btn').addEventListener('click', resetGame);
+
+// --- Settings popup (title screen): full control list, closable. ---
+document.getElementById('settings-btn').addEventListener('click', () => { document.getElementById('settings-popup').style.display = 'flex'; });
+document.getElementById('settings-close').addEventListener('click', () => { document.getElementById('settings-popup').style.display = 'none'; });
+document.getElementById('settings-popup').addEventListener('click', (e) => { if (e.target.id === 'settings-popup') e.target.style.display = 'none'; });
 
 // Continue a saved game (sleeping in a bed saves): show the button only when a save exists.
 const existingSave = loadGame();
