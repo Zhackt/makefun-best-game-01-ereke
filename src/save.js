@@ -89,3 +89,20 @@ export function saveRaceBest(seconds) {
     return readRaceBest();
   } catch { return seconds; }
 }
+
+// --- Save backup code (batch 6, item 4): one text code the player can keep
+// in notes/WA and paste back on any phone/browser to restore everything
+// (name, level, XP, money, skins/items, missions, day). Offline only: the
+// code never leaves the browser except through the clipboard. Moved here
+// from main.js in batch 7 so the codec is importable by tests.
+export const BACKUP_PREFIX = 'EREKE1.';
+export function encodeSaveCode(state) {
+  return BACKUP_PREFIX + btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+}
+export function decodeSaveCode(code) {
+  const raw = (code || '').trim();
+  if (!raw.startsWith(BACKUP_PREFIX)) throw new Error('prefix');
+  const s = JSON.parse(decodeURIComponent(escape(atob(raw.slice(BACKUP_PREFIX.length)))));
+  if (!s || typeof s !== 'object' || typeof s.money !== 'number' || typeof s.day !== 'number' || !Array.isArray(s.missions)) throw new Error('shape');
+  return s;
+}

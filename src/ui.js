@@ -25,7 +25,8 @@ export function createUI() {
 }
 
 export function updateHUD(ui, player, clock, fishing) {
-  ui.money.textContent = fmtRp(player.money);
+  // Developer account (batch 7): money is unlimited — show ∞, not a number.
+  ui.money.textContent = player.dev ? '💰 Rp ∞' : fmtRp(player.money);
   ui.clock.textContent = `Hari ${clock.day}/7 · ${fmtClock(clock.minutes)}`;
   ui.energyFill.style.width = `${Math.max(0, player.energy)}%`;
   ui.energyText.textContent = `Energi ${Math.round(player.energy)}`;

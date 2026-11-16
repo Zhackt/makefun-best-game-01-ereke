@@ -4,7 +4,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { createScene } from './scene.js';
 import { buildWorld, updateSea, groundHeight, makePlayerMesh, makeHeldMesh, makeNameTag } from './world.js';
-import { createPlayer, placePlayer, updatePlayer, updateCamera, addFish, collectionCount, sellAllFish, skinEffect, surfaceY, blockedAt, waterAt, boatDeckY } from './player.js';
+import { createPlayer, placePlayer, updatePlayer, updateCamera, addFish, collectionCount, sellAllFish, skinEffect, spendMoney, surfaceY, blockedAt, waterAt, boatDeckY } from './player.js';
 import { createFishing, startCast, updateFishing, cancelFishing } from './fishing.js';
 import { shopList, buyItem, boatList, buyBoat, fishPrices } from './shop.js';
 import { createMissions, missionProgress, canTurnIn, acceptMission, turnIn, doneCount, missionXp, createJobs, jobProgress, canJobTurnIn, acceptJob, jobTurnIn, missionUnlocked, nextMainMission, activeMainMission, missionChip } from './missions.js';
@@ -12,8 +12,10 @@ import { createNPCs, npcNear, npcLine, NPC_DEFS } from './npcs.js';
 import { createClock, updateClock, endDay, clockText, applyDayNight } from './daynight.js';
 import { createAudio, sfxSplash, sfxCoin, sfxCatch, sfxFail, sfxTalk, sfxSleep, sfxFanfare, sfxStep, sfxHurt, sfxSlash, sfxBite, sfxCrash, updateAmbient } from './audio.js';
 import { createUI, updateHUD, setPrompt, showToast, showBanner, updateTimers, showPanel, hidePanel, showEnd, hideEnd, drawMinimap, drawFullMap, setupFullMap, collectionHTML, missionsHTML, setupTouch, IS_TOUCH } from './ui.js';
-import { SPOTS, PLACES, MONSTERS, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, SHOP_SKINS, THREAT_DAMAGE, HELD_ITEMS, WEAPON_DMG, WEAPONS, isNight, levelFromXp, levelTitle, rankColor, SEA_X, SEA_Y, FREE_BOAT_MAX_X, FREE_BOAT_WARN_X, BOAT_LIMIT_X, BOAT_WARN_X, BOAT_WARN_TEXT, BOAT_ZONE_TABLES } from './data.js';
-import { readBest, saveBest, readRaceBest, saveRaceBest, saveGame, loadGame, clearSave, readLogin, writeLogin, readEvent, writeEvent, readPlayerName, writePlayerName } from './save.js';
+import { SPOTS, PLACES, MONSTERS, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, skinLook, SHOP_SKINS, THREAT_DAMAGE, HELD_ITEMS, WEAPON_DMG, WEAPONS, isNight, levelFromXp, levelTitle, rankColor, SEA_X, SEA_Y, FREE_BOAT_MAX_X, FREE_BOAT_WARN_X, BOAT_LIMIT_X, BOAT_WARN_X, BOAT_WARN_TEXT, BOAT_ZONE_TABLES } from './data.js';
+import { readBest, saveBest, readRaceBest, saveRaceBest, saveGame, loadGame, clearSave, readLogin, writeLogin, readEvent, writeEvent, readPlayerName, writePlayerName, encodeSaveCode, decodeSaveCode } from './save.js';
+import { sha256Hex } from './sha256.js';
+import { devUnlockState, wearSkin, costumeHTML } from './costume.js';
 import { currentEvent, rivalsFor, playerRank, emptyEventState } from './events.js';
 import { HOUSES, RENT_PRICE } from './data.js';
 import { stageShot } from './shots.js';
@@ -70,7 +72,8 @@ if (!eventState || eventState.week !== evt.week) { eventState = emptyEventState(
 
 /** Rebuild the hero mesh when gender / hair / shirt / skin changes. */
 function applyAppearance() {
-  const skin = player.skin ? SKIN_DEFS[player.skin] : null;
+  // skinLook (batch 7): the same skin, female colourway for a cewe character.
+  const skin = player.skin ? skinLook(SKIN_DEFS[player.skin], player.gender) : null;
   const shirtColor = skin ? skin.shirt : player.shirt;
   scene.remove(player.mesh);
   const mesh = makePlayerMesh(player.gender, player.hair, shirtColor, skin);
@@ -239,27 +242,28 @@ function openProfile() {
   screen = 'profile';
   const lv = levelFromXp(player.xp || 0);
   const xpNext = lv * 100;
-  const owned = player.skins || [];
-  const skinRows = owned.length ? owned.map((id) => {
-    const def = SKIN_DEFS[id];
-    return `<div class="shop-item"><div><b>${def.name}</b><small>${def.effect.text} · eksklusif peringkat</small></div><button class="btn" data-skin="${id}" ${player.skin === id ? 'disabled' : ''}>${player.skin === id ? 'Dipakai' : 'Pakai'}</button></div>`;
-  }).join('') : '<p><small>Belum ada skin peringkat — naik level untuk membuka skin eksklusif!</small></p>';
-  const shopOwned = (player.shopSkins || []).map((id) => {
-    const def = SKIN_DEFS[id];
-    return `<div class="shop-item"><div><b>${def.name}</b><small>${def.effect.text}</small></div><button class="btn" data-skin="${id}" ${player.skin === id ? 'disabled' : ''}>${player.skin === id ? 'Dipakai' : 'Pakai'}</button></div>`;
-  }).join('');
+  // Costume (batch 7): the same full menu as the title screen — every skin,
+  // owned ones wearable, locked ones marked with how to unlock them.
   showPanel(ui, `<h2>👤 Profil — Bangzhackt</h2>
   <p>⭐ Level <b>${lv}</b> · <b>${levelTitle(lv)}</b> · XP ${player.xp}/${xpNext}<br>
   🗓️ Total hari main: <b>${player.daysPlayed || 0}</b> · 🎣 Ikan: ${collectionCount(player)}/12 · 📜 Misi: ${doneCount(missions)}/${missions.length} · 💰 Peti harta: ${player.chestsFound || 0}<br>
   🧩 Fragmen peta: <b>${player.fragments || 0}/3</b> · 🎁 Umpan langka: ${player.rareBait || 0}<br>
   🏆 Gelar event: ${(player.titles || []).join(', ') || '—'}</p>
   <h3>👕 Skin yang kamu pakai: ${player.skin ? SKIN_DEFS[player.skin].name + ' — ' + SKIN_DEFS[player.skin].effect.text : 'Baju biasa'}</h3>
-  <button class="btn" data-skin="" ${!player.skin ? 'disabled' : ''}>Lepas Skin (baju biasa)</button>
-  <h3>👕 Skin peringkat (eksklusif)</h3>${skinRows}
-  <h3>🛍️ Skin toko yang kamu miliki</h3>${shopOwned || '<p><small>Belum beli skin — ada di Pasar Ereke!</small></p>'}
+  ${costumeHTML(player)}
   <br><button class="btn ghost" data-close>Tutup (Esc)</button>`);
 }
 document.getElementById('level-pill').addEventListener('click', () => { if (screen === 'play') openProfile(); });
+/** Ganti Kostum in-game (batch 7): the full costume menu as a panel —
+    every skin, owned ones wearable, locked ones marked with how to unlock
+    them. Opened from the pause menu (Esc) and from the profile. */
+function openCostume() {
+  screen = 'costume';
+  showPanel(ui, `<h2>👕 Ganti Kostum</h2>
+  <p>Sedang dipakai: <b>${player.skin ? SKIN_DEFS[player.skin].name : 'Baju biasa'}</b>${player.skin ? ` — ${SKIN_DEFS[player.skin].effect.text}` : ''}</p>
+  ${costumeHTML(player)}
+  <br><button class="btn ghost" data-close>Tutup (Esc)</button>`);
+}
 
 // 3D waypoint arrow: a cone floating above the player, pointing at the target.
 // White halo outline (BackSide, slightly larger) so the arrow stays readable
@@ -565,6 +569,7 @@ function snapshot() {
     x: player.x, z: player.z,
     gender: player.gender, hair: player.hair, shirt: player.shirt, skin: player.skin,
     name: player.name, // character name (title screen; 'Nelayan' if blank)
+    dev: player.dev || false, // developer account (batch 7): max level, unlimited money, all skins
     skins: player.skins, shopSkins: player.shopSkins || [],
     xp: player.xp, fragments: player.fragments, rareBait: player.rareBait,
     daysPlayed: player.daysPlayed, chestsFound: player.chestsFound,
@@ -581,6 +586,7 @@ function applySave(s) {
   player.gender = s.gender || 'cowo'; player.hair = s.hair || 'pendek';
   player.name = s.name || ''; // old saves have no name: stays blank until the title screen fills it
   player.shirt = s.shirt ?? 0x3498db; player.skin = s.skin || null;
+  player.dev = !!s.dev; // old saves have no dev flag: plain account
   player.skins = s.skins || []; player.shopSkins = s.shopSkins || [];
   player.xp = s.xp || 0; player.fragments = s.fragments || 0; player.rareBait = s.rareBait || 0;
   player.daysPlayed = s.daysPlayed || 0; player.chestsFound = s.chestsFound || 0;
@@ -652,8 +658,7 @@ function sleepAt(point) {
   cancelFishing(fishing);
   sfxSleep(audio);
   if (point.rent) {
-    if (player.money < RENT_PRICE) { showToast(ui, `Kamar sewa Rp ${RENT_PRICE.toLocaleString('id-ID')}/malam — uangmu tidak cukup.`); return; }
-    player.money -= RENT_PRICE;
+    if (!spendMoney(player, RENT_PRICE)) { showToast(ui, `Kamar sewa Rp ${RENT_PRICE.toLocaleString('id-ID')}/malam — uangmu tidak cukup.`); return; }
   }
   player.energy = 100;
   player.daysPlayed = (player.daysPlayed || 0) + 1;
@@ -776,10 +781,12 @@ function startGame() {
 
 function resetGame() {
   const keepName = player.name; // same character, new run — the name survives
+  const wasDev = player.dev; // the developer account survives a new run too
   scene.remove(player.mesh);
   const fresh = createPlayer();
   Object.assign(player, fresh);
   player.name = keepName;
+  if (wasDev) devUnlockState(player); // new run, same dev account: max level, unlimited, all skins
   player.walkways = world.walkways;
   scene.add(player.mesh);
   placePlayer(player, 62, 78, world.colliders);
@@ -1029,8 +1036,8 @@ window.addEventListener('keydown', (e) => {
     if (sp && sp.style.display === 'flex') { sp.style.display = 'none'; return; }
     if (screen === 'haggle') { cancelHaggle(); openShop(); return; }
     if (screen === 'map') { closeMap(); return; }
-    if (screen === 'play') { screen = 'paused'; showPanel(ui, `<h2>⏸ Jeda</h2><p>${clockText(clock)} · ${fmtRp(player.money)} · Ikan ${collectionCount(player)}/12</p><button class="btn" data-close>Lanjut Bermain</button><button class="btn ghost" data-restart>Mulai dari Awal</button>`); }
-    else if (screen === 'paused' || screen === 'shop' || screen === 'boatshop' || screen === 'bank' || screen === 'npc' || screen === 'book' || screen === 'missions' || screen === 'salon' || screen === 'events' || screen === 'profile') closePanel();
+    if (screen === 'play') { screen = 'paused'; showPanel(ui, `<h2>⏸ Jeda</h2><p>${clockText(clock)} · ${fmtRp(player.money)} · Ikan ${collectionCount(player)}/12</p><button class="btn" data-close>Lanjut Bermain</button><button class="btn" data-costume-menu>👕 Ganti Kostum</button><button class="btn ghost" data-restart>Mulai dari Awal</button>`); }
+    else if (screen === 'paused' || screen === 'shop' || screen === 'boatshop' || screen === 'bank' || screen === 'npc' || screen === 'book' || screen === 'missions' || screen === 'salon' || screen === 'events' || screen === 'profile' || screen === 'costume') closePanel();
     return;
   }
   if (screen === 'haggle' && k === ' ') { resolveHaggle(); return; }
@@ -1077,35 +1084,34 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement !== canvas && screen === 'play' && !IS_TOUCH && !sleepChoiceOpen) {
     screen = 'paused';
-    showPanel(ui, `<h2>⏸ Jeda</h2><p>Klik Lanjut untuk bermain lagi.</p><button class="btn" data-close>Lanjut Bermain</button>`);
+    showPanel(ui, `<h2>⏸ Jeda</h2><p>Klik Lanjut untuk bermain lagi.</p><button class="btn" data-close>Lanjut Bermain</button><button class="btn" data-costume-menu>👕 Ganti Kostum</button>`);
   }
 });
 
 // --- Panel buttons (delegated) ---
 ui.panelBody.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-close],[data-buy],[data-buyboat],[data-buyhouse],[data-sell],[data-sellpier],[data-haggle],[data-accept],[data-turnin],[data-track],[data-openshop],[data-restart],[data-hair],[data-shirt],[data-buyskin],[data-skin],[data-jobaccept],[data-jobturnin],[data-claimevent],[data-sellwood]');
+  const t = e.target.closest('[data-close],[data-buy],[data-buyboat],[data-buyhouse],[data-sell],[data-sellpier],[data-haggle],[data-accept],[data-turnin],[data-track],[data-openshop],[data-restart],[data-hair],[data-shirt],[data-buyskin],[data-costume],[data-costume-menu],[data-jobaccept],[data-jobturnin],[data-claimevent],[data-sellwood]');
   if (!t) return;
   if (t.hasAttribute('data-close')) { cancelHaggle(); closePanel(); }
   else if (t.hasAttribute('data-hair')) {
     if (player.hair === t.dataset.hair) { showToast(ui, 'Gaya rambut itu sudah dipakai.'); }
-    else if (player.money < 5000) showToast(ui, 'Uang tidak cukup (Rp 5.000).');
-    else { player.money -= 5000; player.hair = t.dataset.hair; applyAppearance(); sfxCoin(audio); showToast(ui, '💇 Gaya rambut baru!'); saveGame(snapshot()); }
+    else if (!spendMoney(player, 5000)) showToast(ui, 'Uang tidak cukup (Rp 5.000).');
+    else { player.hair = t.dataset.hair; applyAppearance(); sfxCoin(audio); showToast(ui, '💇 Gaya rambut baru!'); saveGame(snapshot()); }
     openSalon();
   }
   else if (t.hasAttribute('data-shirt')) {
     const c = Number(t.dataset.shirt);
     if (player.shirt === c) { showToast(ui, 'Baju itu sudah dipakai.'); }
-    else if (player.money < 8000) showToast(ui, 'Uang tidak cukup (Rp 8.000).');
-    else { player.money -= 8000; player.shirt = c; player.skin = null; applyAppearance(); sfxCoin(audio); showToast(ui, '👕 Baju baru!'); saveGame(snapshot()); }
+    else if (!spendMoney(player, 8000)) showToast(ui, 'Uang tidak cukup (Rp 8.000).');
+    else { player.shirt = c; player.skin = null; applyAppearance(); sfxCoin(audio); showToast(ui, '👕 Baju baru!'); saveGame(snapshot()); }
     openSalon();
   }
   else if (t.hasAttribute('data-buyskin')) {
     const s = SHOP_SKINS.find((x) => x.id === t.dataset.buyskin);
     if (!s) return;
     if ((player.shopSkins || []).includes(s.id)) { showToast(ui, 'Skin itu sudah milikmu — pakai dari Profil.'); }
-    else if (player.money < s.price) showToast(ui, `Uang tidak cukup. Butuh ${fmtRp(s.price)} — efek: ${SKIN_DEFS[s.id].effect.text}.`);
+    else if (!spendMoney(player, s.price)) showToast(ui, `Uang tidak cukup. Butuh ${fmtRp(s.price)} — efek: ${SKIN_DEFS[s.id].effect.text}.`);
     else {
-      player.money -= s.price;
       player.shopSkins = [...(player.shopSkins || []), s.id];
       player.skin = s.id; applyAppearance();
       sfxCoin(audio);
@@ -1114,12 +1120,14 @@ ui.panelBody.addEventListener('click', (e) => {
     }
     openShop();
   }
-  else if (t.hasAttribute('data-skin')) {
-    player.skin = t.dataset.skin || null;
-    applyAppearance();
-    sfxCoin(audio);
-    showToast(ui, player.skin ? `👕 Memakai ${SKIN_DEFS[player.skin].name} — ${SKIN_DEFS[player.skin].effect.text}` : '👕 Kembali ke baju biasa.');
-    openProfile();
+  else if (t.hasAttribute('data-costume-menu')) { openCostume(); }
+  else if (t.hasAttribute('data-costume')) {
+    // Costume menu (batch 7): wearSkin refuses locked skins — nothing changes.
+    const r = wearSkin(player, t.dataset.costume || '');
+    if (r.ok) { applyAppearance(); sfxCoin(audio); saveGame(snapshot()); } // autosave: the worn skin survives a closed tab
+    showToast(ui, r.msg);
+    if (screen === 'costume') openCostume();
+    else if (screen === 'profile') openProfile();
   }
   else if (t.hasAttribute('data-jobaccept')) {
     const j = jobs.find((x) => x.id === t.dataset.jobaccept);
@@ -1159,9 +1167,8 @@ ui.panelBody.addEventListener('click', (e) => {
     const h = HOUSES.find((x) => x.id === t.dataset.buyhouse);
     if (!h) return;
     if (player.houses[h.id]) { showToast(ui, 'Rumah itu sudah milikmu.'); }
-    else if (player.money < h.price) { showToast(ui, `Uang tidak cukup. Butuh ${fmtRp(h.price)}.`); }
+    else if (!spendMoney(player, h.price)) { showToast(ui, `Uang tidak cukup. Butuh ${fmtRp(h.price)}.`); }
     else {
-      player.money -= h.price;
       player.houses[h.id] = true;
       sfxCoin(audio);
       showToast(ui, `🏠 Kamu membeli ${h.name}! Sekarang bisa tidur & menyimpan game di sana.`);
@@ -1295,6 +1302,83 @@ document.getElementById('name-input').addEventListener('input', storeNameInput);
 document.getElementById('start-btn').addEventListener('click', () => { storeNameInput(); player.name = readNameInput(); startGame(); });
 document.getElementById('restart-btn').addEventListener('click', resetGame);
 
+// --- Title-screen code field + costume menu (batch 7) ---
+// The code field accepts TWO kinds of code:
+// (a) the developer code — checked by SHA-256 hash only. The code itself is
+//     NEVER in the game files (it lives in dev-code.txt, mode 600, outside
+//     game/); a 28-char random code cannot be brute-forced from its hash.
+//     Pasting it unlocks the developer account: level MAX (100, Dewa),
+//     unlimited money, ALL skins.
+// (b) a backup save code (EREKE1.…) — restores the save, same as the
+//     ⚙️ Pengaturan field. A wrong code changes nothing, just an error.
+const DEV_CODE_SHA256 = '0717dd870a4e00aad32dea620354a94ec98f25c219136a275bfd486171f32e63';
+function codeStatus(msg, ok) {
+  const el = document.getElementById('code-status');
+  if (el) { el.textContent = msg; el.style.color = ok ? '#a9e5a0' : '#ff8a80'; }
+}
+function titleCostumeStatus(msg, ok) {
+  const el = document.getElementById('title-costume-status');
+  if (el) { el.textContent = msg; el.style.color = ok ? '#a9e5a0' : '#ff8a80'; }
+}
+document.getElementById('code-eye').addEventListener('click', () => {
+  const input = document.getElementById('code-input');
+  const masked = input.classList.toggle('masked');
+  document.getElementById('code-eye').textContent = masked ? '👁️' : '🙈';
+});
+document.getElementById('code-apply').addEventListener('click', () => {
+  const raw = (document.getElementById('code-input').value || '').trim();
+  if (!raw) { codeStatus('❌ Tempel dulu kodenya.', false); return; }
+  if (sha256Hex(raw) === DEV_CODE_SHA256) {
+    devUnlockState(player);
+    const cur = loadGame();
+    if (cur) saveGame(devUnlockState(cur));
+    else saveGame(snapshot());
+    applyAppearance();
+    renderTitleCostume();
+    codeStatus('🎉 Kode developer diterima! Level 100 Dewa, uang unlimited, semua skin terbuka.', true);
+    return;
+  }
+  let s;
+  try { s = decodeSaveCode(raw); }
+  catch { codeStatus('❌ Kode tidak dikenali — bukan kode developer atau kode save. Periksa lagi kodenya (jangan ada yang terpotong).', false); return; }
+  saveGame(s);
+  writePlayerName(s.name || '');
+  codeStatus(`✅ Save dipulihkan — ${s.name || 'Nelayan'}, Hari ${s.day}, Level ${levelFromXp(s.xp || 0)}. Memuat ulang…`, true);
+  setTimeout(() => window.location.reload(), 900);
+});
+
+/** The costume list on the title screen: it must show the STORED save's
+    skins (if a save exists), not the fresh player's empty ones — otherwise
+    a returning player would see their bought skins as locked. The live
+    player object is only used when there is no save yet. */
+function titleCostumePlayer() {
+  const s = loadGame();
+  if (!s) return player;
+  return { ...player, skins: s.skins || [], shopSkins: s.shopSkins || [], skin: s.skin || null, dev: !!s.dev, xp: s.xp || 0 };
+}
+function renderTitleCostume() {
+  const el = document.getElementById('title-costume-list');
+  if (el) el.innerHTML = costumeHTML(titleCostumePlayer());
+}
+document.getElementById('title-costume-list').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-costume]');
+  if (!t) return;
+  // Check ownership against the stored save (same display object as the
+  // list); then apply the choice to BOTH the live player (for Permainan
+  // Baru) and the stored save's skin field only (for Lanjutkan) — never
+  // overwrite the whole save with the fresh title-screen state.
+  const disp = titleCostumePlayer();
+  const r = wearSkin(disp, t.dataset.costume || '');
+  if (r.ok) {
+    player.skin = disp.skin;
+    const cur = loadGame();
+    if (cur) { cur.skin = disp.skin; saveGame(cur); }
+    applyAppearance();
+    titleCostumeStatus(r.msg, true);
+  } else titleCostumeStatus(r.msg, false);
+  renderTitleCostume();
+});
+
 // --- Settings popup (title screen): full control list, closable. ---
 // (Restored batch 6: these three handlers were lost from the Pages copy in
 // an earlier batch — without them the ⚙️ Pengaturan button was dead and the
@@ -1307,17 +1391,8 @@ document.getElementById('settings-popup').addEventListener('click', (e) => { if 
 // in notes/WA and paste back on any phone/browser to restore everything
 // (name, level, XP, money, skins/items, missions, day). Offline only: the
 // code never leaves the browser except through the clipboard.
-const BACKUP_PREFIX = 'EREKE1.';
-function encodeSaveCode(state) {
-  return BACKUP_PREFIX + btoa(unescape(encodeURIComponent(JSON.stringify(state))));
-}
-function decodeSaveCode(code) {
-  const raw = (code || '').trim();
-  if (!raw.startsWith(BACKUP_PREFIX)) throw new Error('prefix');
-  const s = JSON.parse(decodeURIComponent(escape(atob(raw.slice(BACKUP_PREFIX.length)))));
-  if (!s || typeof s !== 'object' || typeof s.money !== 'number' || typeof s.day !== 'number' || !Array.isArray(s.missions)) throw new Error('shape');
-  return s;
-}
+// encodeSaveCode / decodeSaveCode live in save.js (imported above) since
+// batch 7, so the title-screen code field can reuse the same codec.
 function backupStatus(msg, ok) {
   const el = document.getElementById('backup-status');
   if (el) { el.textContent = msg; el.style.color = ok ? '#a9e5a0' : '#ff8a80'; }
@@ -1393,6 +1468,9 @@ if (existingSave) {
 // stored name wins over the save's name, so Bang never retypes it.
 const storedName = readPlayerName();
 if (storedName) document.getElementById('name-input').value = storedName;
+// Costume list on the title screen (batch 7): rendered once at boot from the
+// stored save (if any) so owned skins show as wearable, locked ones as locked.
+renderTitleCostume();
 
 // Debug/testing handle (read-only state for playtests; the game never reads it).
 window.__ereke = { player, clock, missions, jobs, fishing, world, eventState, evt, get screen() { return screen; }, get arrowState() { const s = currentArrowState(); return s && { ...s, arrowHex: waypointArrow.material.color.getHex(), arrowVisible: waypointArrow.visible }; }, startGame, doAction, gainXp, levelFromXp, levelTitle, maybeRevealChest, openEvents, openProfile, openSalon };

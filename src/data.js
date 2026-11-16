@@ -257,20 +257,30 @@ export const EVENT_TITLES = {
 // motoSpeed (motor lebih cepat), xp (XP lebih banyak).
 export const SKIN_DEFS = {
   // Shop skins (bought at Pasar Ereke — effect shown on the card before buying).
-  nelayan: { name: 'Baju Nelayan', shirt: 0x2e7d32, hat: null, cloak: false, glow: false, effect: { type: 'sell', value: 1.10, text: '+10% harga jual ikan' } },
-  topi: { name: 'Topi Pantai', shirt: 0x3498db, hat: 'straw', cloak: false, glow: false, effect: { type: 'fishSpeed', value: 1.10, text: 'Mancing 10% lebih cepat' } },
-  sepatu: { name: 'Sepatu Lari', shirt: 0xe67e22, hat: null, cloak: false, glow: false, effect: { type: 'walkSpeed', value: 1.10, text: 'Jalan 10% lebih cepat' } },
-  penyelam: { name: 'Rompi Penyelam', shirt: 0x1565c0, hat: null, cloak: false, glow: false, vest: true, effect: { type: 'rare', value: 1.5, text: 'Ikan langka 50% lebih sering muncul' } },
-  balap: { name: 'Jaket Balap', shirt: 0xc62828, hat: null, cloak: false, glow: false, trim: 0xffd700, effect: { type: 'motoSpeed', value: 1.10, text: 'Motor 10% lebih cepat' } },
-  festival: { name: 'Baju Festival', shirt: 0x8e24aa, hat: null, cloak: true, glow: false, effect: { type: 'xp', value: 1.15, text: '+15% XP dari semua aktivitas' } },
+  // female: the female colourway of the same skin (batch 7) — the character
+  // wears the variant that matches the chosen gender (👦/👧 on the title
+  // screen); the name, effect and unlock rule are the same for both.
+  nelayan: { name: 'Baju Nelayan', shirt: 0x2e7d32, female: { shirt: 0x00897b }, hat: null, cloak: false, glow: false, effect: { type: 'sell', value: 1.10, text: '+10% harga jual ikan' } },
+  topi: { name: 'Topi Pantai', shirt: 0x3498db, female: { shirt: 0x7e57c2 }, hat: 'straw', cloak: false, glow: false, effect: { type: 'fishSpeed', value: 1.10, text: 'Mancing 10% lebih cepat' } },
+  sepatu: { name: 'Sepatu Lari', shirt: 0xe67e22, female: { shirt: 0xec407a }, hat: null, cloak: false, glow: false, effect: { type: 'walkSpeed', value: 1.10, text: 'Jalan 10% lebih cepat' } },
+  penyelam: { name: 'Rompi Penyelam', shirt: 0x1565c0, female: { shirt: 0x26a69a }, hat: null, cloak: false, glow: false, vest: true, effect: { type: 'rare', value: 1.5, text: 'Ikan langka 50% lebih sering muncul' } },
+  balap: { name: 'Jaket Balap', shirt: 0xc62828, female: { shirt: 0xab47bc }, hat: null, cloak: false, glow: false, trim: 0xffd700, effect: { type: 'motoSpeed', value: 1.10, text: 'Motor 10% lebih cepat' } },
+  festival: { name: 'Baju Festival', shirt: 0x8e24aa, female: { shirt: 0xd81b60 }, hat: null, cloak: true, glow: false, effect: { type: 'xp', value: 1.15, text: '+15% XP dari semua aktivitas' } },
   // Rank-exclusive skins (only from ranking up — never sold; stronger effects).
-  junior: { name: 'Pakaian Pantai Biru + Topi Nelayan', shirt: 0x2196f3, hat: 'straw', cloak: false, glow: false, effect: { type: 'sell', value: 1.15, text: '+15% harga jual ikan' } },
-  senior: { name: 'Rompi Nelayan', shirt: 0x6d4c41, hat: null, cloak: false, glow: false, vest: true, effect: { type: 'fishSpeed', value: 1.15, text: 'Mancing 15% lebih cepat' } },
-  master: { name: 'Pakaian Merah-Emas', shirt: 0xc62828, hat: null, cloak: false, glow: false, trim: 0xffd700, effect: { type: 'sell', value: 1.20, text: '+20% harga jual ikan' } },
-  grandmaster: { name: 'Pakaian Emas', shirt: 0xffd700, hat: 'gold', cloak: false, glow: false, trim: 0xffffff, effect: { type: 'rare', value: 2.0, text: 'Ikan langka 2x lebih sering muncul' } },
-  legenda: { name: 'Jubah Legendaris', shirt: 0x4a148c, hat: null, cloak: true, glow: false, effect: { type: 'xp', value: 1.25, text: '+25% XP dari semua aktivitas' } },
-  dewa: { name: 'Pakaian Dewa Bercahaya', shirt: 0xffd700, hat: 'crown', cloak: true, glow: true, effect: { type: 'xp', value: 1.25, text: '+25% XP & +25% harga jual ikan' } },
+  junior: { name: 'Pakaian Pantai Biru + Topi Nelayan', shirt: 0x2196f3, female: { shirt: 0x5c6bc0 }, hat: 'straw', cloak: false, glow: false, effect: { type: 'sell', value: 1.15, text: '+15% harga jual ikan' } },
+  senior: { name: 'Rompi Nelayan', shirt: 0x6d4c41, female: { shirt: 0xa1887f }, hat: null, cloak: false, glow: false, vest: true, effect: { type: 'fishSpeed', value: 1.15, text: 'Mancing 15% lebih cepat' } },
+  master: { name: 'Pakaian Merah-Emas', shirt: 0xc62828, female: { shirt: 0xef5350 }, hat: null, cloak: false, glow: false, trim: 0xffd700, effect: { type: 'sell', value: 1.20, text: '+20% harga jual ikan' } },
+  grandmaster: { name: 'Pakaian Emas', shirt: 0xffd700, female: { shirt: 0xffb300 }, hat: 'gold', cloak: false, glow: false, trim: 0xffffff, effect: { type: 'rare', value: 2.0, text: 'Ikan langka 2x lebih sering muncul' } },
+  legenda: { name: 'Jubah Legendaris', shirt: 0x4a148c, female: { shirt: 0x7b1fa2 }, hat: null, cloak: true, glow: false, effect: { type: 'xp', value: 1.25, text: '+25% XP dari semua aktivitas' } },
+  dewa: { name: 'Pakaian Dewa Bercahaya', shirt: 0xffd700, female: { shirt: 0xffee58 }, hat: 'crown', cloak: true, glow: true, effect: { type: 'xp', value: 1.25, text: '+25% XP & +25% harga jual ikan' } },
 };
+// The skin as the character actually wears it: same skin, female colourway
+// for a cewe character (batch 7). Returns the def unchanged for cowo.
+export function skinLook(def, gender) {
+  if (!def) return null;
+  if (gender === 'cewe' && def.female) return { ...def, shirt: def.female.shirt };
+  return def;
+}
 export const SHOP_SKINS = [
   { id: 'nelayan', price: 50000 },
   { id: 'topi', price: 30000 },
@@ -279,6 +289,11 @@ export const SHOP_SKINS = [
   { id: 'balap', price: 120000 },
   { id: 'festival', price: 200000 },
 ];
+// Level needed to unlock each rank-exclusive skin (same as its rank-up level).
+export const RANK_SKIN_LEVEL = { junior: 10, senior: 20, master: 30, grandmaster: 40, legenda: 50, dewa: 100 };
+export const RANK_SKIN_IDS = ['junior', 'senior', 'master', 'grandmaster', 'legenda', 'dewa'];
+export const SHOP_SKIN_IDS = SHOP_SKINS.map((s) => s.id);
+export const ALL_SKIN_IDS = [...RANK_SKIN_IDS, ...SHOP_SKIN_IDS];
 // RANK-UP REWARDS — one per rank-up (never sold in shops). Skin = outfit parts.
 // Junior 25k, Senior 50k, Master 100k, Grandmaster 200k, Legenda 500k, Dewa 1jt.
 export const RANK_REWARDS = {

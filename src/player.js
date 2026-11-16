@@ -26,6 +26,17 @@ export function skinEffect(p, type) {
   return 1;
 }
 
+/** Pay for something (batch 7): developer accounts (dev code) never pay —
+    their money is unlimited. Returns false when the player cannot afford it
+    (and nothing is deducted). All shop/salon/house/rent purchases go
+    through this one helper so the rule is the same everywhere. */
+export function spendMoney(p, n) {
+  if (p.dev) return true;
+  if (p.money < n) return false;
+  p.money -= n;
+  return true;
+}
+
 /** Boat speed by tier: 1 wooden, 2 motor, 3 large, 4 giant ship (slower to turn). */
 export function boatSpeed(tier) { return [0, 12, 18, 24, 20][tier] || 12; }
 
@@ -39,6 +50,7 @@ export function createPlayer() {
     rod: 1, bait: 0, boat: false, boatTier: 0, houses: {},
     gender: 'cowo', hair: 'pendek', shirt: 0x3498db,
     name: '', // character name (title screen; 'Nelayan' if blank)
+    dev: false, // developer account (batch 7 dev code): max level, unlimited money, all skins
     xp: 0, fragments: 0, rareBait: 0, daysPlayed: 0, chestsFound: 0, coconuts: 0, gather: { wood: 0, fruit: 0, mushroom: 0 },
     titles: [], skins: [], skin: null, shopSkins: [], motoPaint: null, boatPaint: null, outfit: 'default', defeated: {},
     fish: {}, caught: {}, moving: false, walkPhase: 0,

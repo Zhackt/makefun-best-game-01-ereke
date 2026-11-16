@@ -425,8 +425,9 @@ export function makePlayerMesh(gender, hair, shirtColor, skin = null) {
     }
   }
   if (gender === 'cewe') {
-    // Skirt instead of trousers.
-    const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.7, 6), mat(0xe91e63));
+    // Skirt instead of trousers — same colour as the shirt, so a skin's
+    // female colourway (batch 7) shows on the skirt too.
+    const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.7, 6), mat(shirtColor));
     skirt.position.y = 0.35; g.add(skirt);
   } else {
     const legL = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.7, 0.32), mat(0x2c3e50));
