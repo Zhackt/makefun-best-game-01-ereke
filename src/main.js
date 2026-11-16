@@ -20,9 +20,12 @@ import { stageShot } from './shots.js';
 
 const params = new URLSearchParams(window.location.search);
 const shot = params.get('shot');
-// Loading screen (batch 5, item 5): real progress only — the bar moves when
-// a stage actually finishes. The awaits let the browser paint each step;
-// without them the synchronous init would jump 5% straight to 100%.
+// Loading screen (batch 5, item 5 + loading hotfix): the bar in index.html
+// runs on a TIMER (~20%/s, 100% in ~5s) so it never stalls on a slow
+// connection; the milestones below only refresh the stage label and may
+// push the bar forward, never backwards. __erekeReady() is the signal that
+// the game is REALLY ready (first frame painted) — only then does the
+// title screen appear.
 const loadTick = () => new Promise((r) => requestAnimationFrame(r));
 const loadStep = (pct, label) => { if (window.__erekeLoad) window.__erekeLoad(pct, label); };
 const canvas = document.getElementById('game');
@@ -1561,10 +1564,8 @@ if (shot) {
   })();
 } else {
   frame();
-  // First frame painted → 100%, then the title screen (Mobile-Legends style:
-  // the bar holds at 100% for a beat before the transition).
-  requestAnimationFrame(() => {
-    loadStep(100, 'Siap!');
-    setTimeout(() => { if (window.__erekeLoadDone) window.__erekeLoadDone(true); }, 350);
-  });
+  // First frame painted → the game is really ready. Tell the loading
+  // screen: it jumps the timer bar to 100% (or holds there if it already
+  // reached 100% while waiting) and then shows the title screen.
+  requestAnimationFrame(() => { if (window.__erekeReady) window.__erekeReady(); });
 }
