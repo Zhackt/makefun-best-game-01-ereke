@@ -143,6 +143,13 @@ document.getElementById('login-claim').addEventListener('click', () => {
   showToast(ui, `🎁 Login Hari ${streak}: +${fmtRp(reward.money)}${reward.bait ? ` +${reward.bait} umpan` : ''}${reward.rareBait ? ' +🎁 umpan langka' : ''} · +30 XP`);
   loginClaim = null;
 });
+// Dismiss the daily-reward popup without claiming: it sits above the title
+// screen, so it must never block the "Mulai Bermain" button. The reward is
+// NOT lost — nothing is written, so the popup (and the reward) is still
+// there to claim on the next load.
+document.getElementById('login-close').addEventListener('click', () => {
+  document.getElementById('login-popup').style.display = 'none';
+});
 
 function nearSalon() {
   for (const s of world.salons) if (Math.hypot(player.x - s.x, player.z - s.z) < 6) return s;
