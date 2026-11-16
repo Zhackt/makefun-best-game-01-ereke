@@ -61,12 +61,25 @@
   .fish-row { display: flex; gap: 10px; align-items: center; padding: 7px 4px; border-bottom: 1px solid rgba(255,255,255,.12); font-size: 14px; }
   .fish-row.got { color: #a9e5a0; }
   .fish-list { margin: 10px 0; }
+  .mission-row.next { background: rgba(241,196,15,.18); border: 1px solid #f1c40f; border-radius: 8px; padding: 7px 8px; }
+  .mission-row.locked { opacity: .55; }
+  .mission-row.done { opacity: .65; }
+  #panel-body h3 { margin: 16px 0 4px; color: #f1c40f; font-size: 16px; }
+  /* Mission tracker: a tappable bar under the HUD, always showing the next main mission. */
+  #mission-tracker { position: fixed; top: 56px; left: 10px; max-width: 60vw; background: rgba(12,24,38,.9); color: #ffd700; border: 1px solid #f1c40f; border-radius: 20px; padding: 7px 13px; font-size: 13px; font-weight: 700; z-index: 5; cursor: pointer; white-space: normal; line-height: 1.35; }
+  #mission-tracker.done { color: #a9e5a0; border-color: #2ecc71; }
+  /* Sleep choice modal (item 11): the game pauses while the player chooses. */
+  #sleep-modal { position: fixed; inset: 0; z-index: 45; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
+  /* Touch: the held-item button moves to the LEFT, above the joystick, away
+     from the right-side camera-drag zone; 44px minimum touch target. */
+  body.touch #held-btn { left: 22px; right: auto; top: auto; bottom: 165px; min-width: 44px; min-height: 44px; padding: 10px 14px; }
+  body.touch #held-panel { left: 12px; right: auto; top: 50%; transform: translateY(-50%); max-height: 92vh; overflow-y: auto; width: min(260px, 86vw); }
   .rar { font-size: 12px; opacity: .8; }
   .rar.rare { color: #7fb3ff; } .rar.leg { color: #ffb347; font-weight: 800; }
   .shop-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid rgba(255,255,255,.12); }
   .shop-item b { display: block; } .shop-item small { opacity: .8; }
   #title-screen, #end-screen { position: fixed; inset: 0; z-index: 30; display: flex; align-items: safe center; justify-content: center; overflow-y: auto; background: linear-gradient(180deg, rgba(11,30,58,.94), rgba(11,30,58,.98)); }
-  .screen-title #hud, .screen-title #minimap, .screen-title #minimap-label, .screen-title #help, .screen-title #touch, .screen-title #held-btn, .screen-title #held-panel { display: none !important; }
+  .screen-title #hud, .screen-title #minimap, .screen-title #minimap-label, .screen-title #help, .screen-title #touch, .screen-title #held-btn, .screen-title #held-panel, .screen-title #mission-tracker, .screen-title #boat-dist { display: none !important; }
   .card { text-align: center; color: #fff; max-width: 640px; padding: 30px; }
   .card h1 { font-size: 54px; margin: 0; color: #f1c40f; text-shadow: 0 3px 0 #7a5b00, 0 6px 18px rgba(0,0,0,.6); }
   .card h3 { font-size: 20px; margin: 6px 0 14px; font-weight: 500; opacity: .95; }
@@ -86,7 +99,8 @@
   .held-row.sel { background: rgba(241,196,15,.25); border-color: #f1c40f; }
   .held-row small { opacity: .8; font-weight: 500; }
   #help { position: fixed; bottom: 10px; left: 10px; color: rgba(255,255,255,.75); font-size: 12px; text-shadow: 0 1px 2px #000; z-index: 5; }
-  @media (max-width: 700px) { #minimap { width: 104px; height: 72px; } #minimap-label { top: 88px; } #held-btn { top: 112px; } #held-panel { top: 156px; } #waypoint-chip { top: 192px; } /* 16 Nov: the HUD wraps to 4 rows at Lv 1 (bottom 147) and 5 rows at high level (bottom 184) on a phone, so the chip must sit below 184 or it lands on the map button / level pill */ .card { padding: 16px 14px; } .card h1 { font-size: 32px; } .card h3 { font-size: 16px; margin: 4px 0 8px; } .card p { font-size: 14px; line-height: 1.45; } .card .keys { font-size: 12px; padding: 8px; } .gender-btn { padding: 10px 14px; font-size: 15px; } #hud { max-width: 52vw; } .pill { font-size: 12px; padding: 5px 9px; } }
+  @media (max-width: 700px) { #minimap { width: 84px; height: 58px; } #minimap-label { top: 72px; } #held-btn { top: 112px; } #held-panel { top: 156px; } #mission-tracker { top: 190px; left: 10px; right: 10px; max-width: none; } #waypoint-chip { top: 232px; } /* 16 Nov: the HUD wraps to 4 rows at Lv 1 (bottom 147) and 5 rows at high level (bottom 184) on a phone, so the chip must sit below 184 or it lands on the map button / level pill — batch 4: the mission tracker sits at 190, so the chip moves to 232 */ .card { padding: 16px 14px; } .card h1 { font-size: 32px; } .card h3 { font-size: 16px; margin: 4px 0 8px; } .card p { font-size: 14px; line-height: 1.45; } .card .keys { font-size: 12px; padding: 8px; } .gender-btn { padding: 10px 14px; font-size: 15px; } #hud { max-width: 52vw; } .pill { font-size: 12px; padding: 5px 9px; } }
+  @media (max-height: 500px) { #minimap { width: 84px; height: 58px; } #minimap-label { top: 72px; } #mission-tracker { top: 88px; max-width: 52vw; } #waypoint-chip { top: 132px; } }
 </style>
 </head>
 <body>
@@ -97,8 +111,10 @@
   <span class="pill" id="energy-wrap"><span id="energy-text">Energi 100</span><span id="energy-bar"><span id="energy-fill"></span></span></span>
   <span class="pill" id="collection">Ikan 0/12</span>
   <span class="pill gold" id="level-pill" title="Profil & skin">⭐ Lv 1 · Pemula</span>
+  <span class="pill" id="boat-dist" style="display:none">🌊 0 m dari pantai</span>
   <button class="pill" id="map-btn" title="Buka peta (M)">🗺️ Peta</button>
 </div>
+<div id="mission-tracker" title="Ketuk untuk membuka panel misi (V)">⭐ Misi Utama: Kerapu untuk Warung</div>
 <canvas id="minimap" width="210" height="145" title="Peta sekitar — klik untuk membuka peta besar"></canvas>
 <div id="minimap-label">Peta sekitar — klik untuk peta besar</div>
 <div id="fullmap">
@@ -121,10 +137,11 @@
 <div id="fishbar"><div id="fish-label"></div><div id="fish-track"><div id="fish-zone"></div><div id="fish-marker"></div></div><div id="fish-progress-wrap"><div id="fish-progress"></div></div></div>
 <div id="monster-bar" style="display:none;position:fixed;bottom:150px;left:50%;transform:translateX(-50%);width:min(420px,80vw);z-index:7;text-align:center"><div id="monster-name" style="color:#fff;font-weight:700;text-shadow:0 2px 4px #000;margin-bottom:4px;font-size:14px"></div><div style="height:12px;background:rgba(0,0,0,.65);border:2px solid #fff;border-radius:6px;overflow:hidden"><div id="monster-fill" style="height:100%;width:100%;background:#e74c3c"></div></div></div>
 <div id="panel"><div id="panel-body"></div></div>
+<div id="sleep-modal"><div class="popup-card"><h2 id="sleep-modal-title">🌙 Hari sudah berakhir</h2><p id="sleep-modal-text"></p><button class="btn" id="sleep-modal-sleep">😴 Pulang &amp; Tidur — Simpan</button><button class="btn ghost" id="sleep-modal-stay">🌙 Lanjutkan main</button></div></div>
 <div id="title-screen"><div class="card">
   <h1>🌊 BUTUR<br>ADVENTURES</h1>
   <h3>Jelajah Ereke, Buton Utara — Nelayan Legendaris</h3>
-  <p>Kamu bangun di <b>Desa Loji Pantai</b>. Laut Banda memanggil. Dalam <b>7 hari</b>, tangkap <b>12 spesies ikan</b> — dari Kembung sampai Pari Emas — jual di <b>Pasar Ereke</b>, beli joran dan perahu, dan bantu warga desa. Jadilah <b>Nelayan Legendaris Ereke</b>!</p>
+  <p>Kamu bangun di <b>Desa Loji Pantai</b>. Laut Banda memanggil. Dalam <b>7 hari</b>, tangkap <b>12 spesies ikan</b> — dari Kembung sampai Pari Emas — jual di <b>Pasar Ereke</b>, beli joran dan perahu, dan ikuti <b>⭐ Misi Utama</b> (tombol V) dari Kerapu untuk Warung sampai Raja Hutan. Jadilah <b>Nelayan Legendaris Ereke</b>!</p>
   <p>👤 <b>Pilih karaktermu:</b></p>
   <p><button class="gender-btn selected" data-gender="cowo">👦 Cowo</button> <button class="gender-btn" data-gender="cewe">👧 Cewe</button></p>
   <button class="btn" id="start-btn">▶ Mulai Bermain</button>
