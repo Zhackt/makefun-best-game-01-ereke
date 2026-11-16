@@ -65,13 +65,32 @@
   .mission-row.locked { opacity: .55; }
   .mission-row.done { opacity: .65; }
   #panel-body h3 { margin: 16px 0 4px; color: #f1c40f; font-size: 16px; }
-  /* Mission tracker: a tappable bar under the HUD, always showing the next main mission. */
-  #mission-tracker { position: fixed; top: 56px; left: 10px; max-width: 60vw; background: rgba(12,24,38,.9); color: #ffd700; border: 1px solid #f1c40f; border-radius: 20px; padding: 7px 13px; font-size: 13px; font-weight: 700; z-index: 5; cursor: pointer; white-space: normal; line-height: 1.35; }
+  /* Mission chip (batch 5, item 1): one short line, title only — the full
+     mission text lives in the missions panel. Top is set from JS (HUD bottom
+     + 6px); the CSS top is only the pre-JS fallback. */
+  #mission-tracker { position: fixed; top: 56px; left: 10px; max-width: 60vw; background: rgba(12,24,38,.9); color: #ffd700; border: 1px solid #f1c40f; border-radius: 20px; padding: 6px 11px; font-size: 12px; font-weight: 700; z-index: 5; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #mission-tracker.done { color: #a9e5a0; border-color: #2ecc71; }
   /* Sleep choice modal (item 11): the game pauses while the player chooses. */
   #sleep-modal { position: fixed; inset: 0; z-index: 45; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
-  /* Touch: the held-item button moves to the LEFT, above the joystick, away
-     from the right-side camera-drag zone; 44px minimum touch target. */
+  /* Character name on the title screen (batch 5, item 4). */
+  #name-input { background: rgba(255,255,255,.12); color: #fff; border: 2px solid rgba(255,255,255,.4); border-radius: 10px; padding: 10px 14px; font-size: 16px; font-weight: 700; text-align: center; width: min(280px, 80vw); margin-top: 6px; }
+  #name-input:focus { outline: none; border-color: #f1c40f; }
+  #name-input::placeholder { color: rgba(255,255,255,.55); font-weight: 500; }
+  /* Title art: a real in-game render (batch 5, item 5). */
+  .title-art { width: 100%; max-height: 220px; object-fit: cover; border-radius: 12px; border: 2px solid rgba(241,196,15,.6); margin: 0 0 10px; display: block; }
+  /* Loading screen (batch 5, item 5): Mobile-Legends style — big title over
+     the game artwork, loading bar + percent at the bottom. Covers everything
+     (z 60) until the game is really ready. */
+  #loading-screen { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: #0b1e3a; overflow: hidden; }
+  .loading-art { position: absolute; inset: 0; background: url('./assets/title.jpg') center/cover no-repeat; opacity: .55; }
+  .loading-art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(11,30,58,.55), rgba(11,30,58,.92)); }
+  .loading-inner { position: relative; z-index: 1; text-align: center; color: #fff; width: min(560px, 92vw); padding: 20px; }
+  .loading-title { font-size: clamp(40px, 9vw, 64px); margin: 0; color: #f1c40f; text-shadow: 0 3px 0 #7a5b00, 0 6px 18px rgba(0,0,0,.7); line-height: 1.05; }
+  .loading-sub { font-size: 16px; opacity: .95; margin: 8px 0 0; }
+  .loading-bar-wrap { margin: 34px auto 10px; width: min(420px, 84vw); height: 14px; background: rgba(255,255,255,.18); border: 2px solid rgba(255,255,255,.5); border-radius: 8px; overflow: hidden; }
+  #loading-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #f1c40f, #ffe066); transition: width .25s; }
+  #loading-pct { font-size: 18px; font-weight: 800; color: #f1c40f; }
+  #loading-label { font-size: 13px; opacity: .85; margin: 4px 0 0; }
   body.touch #held-btn { left: 22px; right: auto; top: auto; bottom: 165px; min-width: 44px; min-height: 44px; padding: 10px 14px; }
   body.touch #held-panel { left: 12px; right: auto; top: 50%; transform: translateY(-50%); max-height: 92vh; overflow-y: auto; width: min(260px, 86vw); }
   .rar { font-size: 12px; opacity: .8; }
@@ -92,6 +111,10 @@
   #action-btn { position: fixed; right: 24px; bottom: 40px; width: 92px; height: 92px; border-radius: 50%; background: #f1c40f; color: #1a1a1a; font-size: 17px; font-weight: 900; border: 3px solid #fff; z-index: 8; }
   #jump-btn { position: fixed; right: 132px; bottom: 46px; width: 64px; height: 64px; border-radius: 50%; background: rgba(46,204,113,.92); color: #fff; font-size: 13px; font-weight: 900; border: 2px solid #fff; z-index: 8; }
   #attack-btn { position: fixed; right: 24px; bottom: 220px; width: 64px; height: 64px; border-radius: 50%; background: rgba(231,76,60,.92); color: #fff; font-size: 12px; font-weight: 900; border: 2px solid #fff; z-index: 8; display: none; }
+  /* "Senjata" button (batch 5, item 3): right side, above AKSI, opens the
+     same held-item panel as the left pill. Stacked: AKSI 40-132, Senjata
+     148-212, SERANG 220-284 — no overlap, all >= 44px targets. */
+  #weapon-btn { position: fixed; right: 24px; bottom: 148px; width: 64px; height: 64px; border-radius: 50%; background: rgba(18,40,61,.92); color: #fff; font-size: 12px; font-weight: 900; border: 2px solid #f1c40f; z-index: 8; }
   #held-btn { position: fixed; top: 184px; right: 12px; background: rgba(12,24,38,.88); color: #fff; border: 1px solid #f1c40f; border-radius: 20px; padding: 7px 12px; font-size: 13px; font-weight: 700; z-index: 5; cursor: pointer; }
   #held-panel { position: fixed; top: 228px; right: 12px; width: 232px; background: #12283d; color: #fff; border: 2px solid #f1c40f; border-radius: 12px; padding: 10px; z-index: 9; display: none; }
   #held-panel h3 { margin: 0 0 6px; color: #f1c40f; font-size: 15px; }
@@ -99,8 +122,11 @@
   .held-row.sel { background: rgba(241,196,15,.25); border-color: #f1c40f; }
   .held-row small { opacity: .8; font-weight: 500; }
   #help { position: fixed; bottom: 10px; left: 10px; color: rgba(255,255,255,.75); font-size: 12px; text-shadow: 0 1px 2px #000; z-index: 5; }
-  @media (max-width: 700px) { #minimap { width: 84px; height: 58px; } #minimap-label { top: 72px; } #held-btn { top: 112px; } #held-panel { top: 156px; } #mission-tracker { top: 190px; left: 10px; right: 10px; max-width: none; } #waypoint-chip { top: 232px; } /* 16 Nov: the HUD wraps to 4 rows at Lv 1 (bottom 147) and 5 rows at high level (bottom 184) on a phone, so the chip must sit below 184 or it lands on the map button / level pill — batch 4: the mission tracker sits at 190, so the chip moves to 232 */ .card { padding: 16px 14px; } .card h1 { font-size: 32px; } .card h3 { font-size: 16px; margin: 4px 0 8px; } .card p { font-size: 14px; line-height: 1.45; } .card .keys { font-size: 12px; padding: 8px; } .gender-btn { padding: 10px 14px; font-size: 15px; } #hud { max-width: 52vw; } .pill { font-size: 12px; padding: 5px 9px; } }
-  @media (max-height: 500px) { #minimap { width: 84px; height: 58px; } #minimap-label { top: 72px; } #mission-tracker { top: 88px; max-width: 52vw; } #waypoint-chip { top: 132px; } }
+  @media (max-width: 700px) { #minimap { width: 84px; height: 58px; } #minimap-label { top: 72px; } #held-btn { top: 112px; } #held-panel { top: 156px; } #mission-tracker { top: 190px; max-width: 60vw; } #waypoint-chip { top: 232px; } /* 16 Nov: the HUD wraps to 4 rows at Lv 1 (bottom 147) and 5 rows at high level (bottom 184) on a phone, so the chip must sit below 184 or it lands on the map button / level pill — batch 5: the mission chip top is measured from the HUD bottom in JS, 190px is only the pre-JS fallback */ .card { padding: 16px 14px; } .card h1 { font-size: 32px; } .card h3 { font-size: 16px; margin: 4px 0 8px; } .card p { font-size: 14px; line-height: 1.45; } .card .keys { font-size: 12px; padding: 8px; } .gender-btn { padding: 10px 14px; font-size: 15px; } #hud { max-width: 52vw; } .pill { font-size: 12px; padding: 5px 9px; } }
+  /* Landscape (batch 5, item 2): smaller menu text so nothing covers the
+     middle of the screen where the character stands. HUD pills ~11px,
+     mission chip max 36vw (clears the centre zone), minimap label 10px. */
+  @media (max-height: 500px) { #minimap { width: 84px; height: 58px; } #minimap-label { top: 72px; font-size: 10px; } #mission-tracker { top: 88px; max-width: 36vw; font-size: 12px; padding: 5px 10px; } #waypoint-chip { top: 132px; font-size: 12px; padding: 5px 10px; } #hud { gap: 6px; } .pill { font-size: 11px; padding: 5px 8px; } #energy-bar { width: 60px; } #help { font-size: 10px; } }
 </style>
 </head>
 <body>
@@ -114,9 +140,9 @@
   <span class="pill" id="boat-dist" style="display:none">🌊 0 m dari pantai</span>
   <button class="pill" id="map-btn" title="Buka peta (M)">🗺️ Peta</button>
 </div>
-<div id="mission-tracker" title="Ketuk untuk membuka panel misi (V)">⭐ Misi Utama: Kerapu untuk Warung</div>
+<div id="mission-tracker" title="Ketuk untuk membuka panel misi (V)">⭐ Misi: Kerapu untuk Warung</div>
 <canvas id="minimap" width="210" height="145" title="Peta sekitar — klik untuk membuka peta besar"></canvas>
-<div id="minimap-label">Peta sekitar — klik untuk peta besar</div>
+<div id="minimap-label">Peta sekitar — klik peta besar</div>
 <div id="fullmap">
   <div id="map-box">
     <button class="btn" id="map-close-x" title="Tutup peta">✕</button>
@@ -138,12 +164,14 @@
 <div id="monster-bar" style="display:none;position:fixed;bottom:150px;left:50%;transform:translateX(-50%);width:min(420px,80vw);z-index:7;text-align:center"><div id="monster-name" style="color:#fff;font-weight:700;text-shadow:0 2px 4px #000;margin-bottom:4px;font-size:14px"></div><div style="height:12px;background:rgba(0,0,0,.65);border:2px solid #fff;border-radius:6px;overflow:hidden"><div id="monster-fill" style="height:100%;width:100%;background:#e74c3c"></div></div></div>
 <div id="panel"><div id="panel-body"></div></div>
 <div id="sleep-modal"><div class="popup-card"><h2 id="sleep-modal-title">🌙 Hari sudah berakhir</h2><p id="sleep-modal-text"></p><button class="btn" id="sleep-modal-sleep">😴 Pulang &amp; Tidur — Simpan</button><button class="btn ghost" id="sleep-modal-stay">🌙 Lanjutkan main</button></div></div>
-<div id="title-screen"><div class="card">
+<div id="title-screen" style="display:none"><div class="card">
   <h1>🌊 BUTUR<br>ADVENTURES</h1>
   <h3>Jelajah Ereke, Buton Utara — Nelayan Legendaris</h3>
+  <img class="title-art" src="./assets/title.jpg" alt="Butur Adventures — pemandangan Ereke">
   <p>Kamu bangun di <b>Desa Loji Pantai</b>. Laut Banda memanggil. Dalam <b>7 hari</b>, tangkap <b>12 spesies ikan</b> — dari Kembung sampai Pari Emas — jual di <b>Pasar Ereke</b>, beli joran dan perahu, dan ikuti <b>⭐ Misi Utama</b> (tombol V) dari Kerapu untuk Warung sampai Raja Hutan. Jadilah <b>Nelayan Legendaris Ereke</b>!</p>
   <p>👤 <b>Pilih karaktermu:</b></p>
   <p><button class="gender-btn selected" data-gender="cowo">👦 Cowo</button> <button class="gender-btn" data-gender="cewe">👧 Cewe</button></p>
+  <p>📝 <b>Nama karaktermu:</b><br><input id="name-input" type="text" maxlength="16" placeholder="Tulis nama karakter…" autocomplete="off"></p>
   <button class="btn" id="start-btn">▶ Mulai Bermain</button>
   <button class="btn ghost" id="settings-btn">⚙️ Pengaturan</button>
   <button class="btn ghost" id="continue-btn" style="display:none">↻ Lanjutkan</button>
@@ -176,10 +204,40 @@
   <button id="action-btn">🎣<br>AKSI</button>
   <button id="jump-btn">⬆️<br>LONCAT</button>
   <button id="attack-btn">⚔️<br>SERANG</button>
+  <button id="weapon-btn" title="Pilih senjata / yang dipegang">⚔️<br>Senjata</button>
 </div>
 <button id="held-btn" title="Pilih yang dipegang">🎣 Pancing</button>
 <div id="held-panel"><h3>🖐️ Yang dipegang</h3><div id="held-list"></div><button class="btn ghost" id="held-close" style="margin-top:8px">Tutup</button></div>
 <div id="help">WASD jalan · Mouse kamera · F pancing · E bicara/naik kendaraan · B perahu · T tidur</div>
+<!-- Loading screen (batch 5, item 5): shows first, real progress only. -->
+<div id="loading-screen">
+  <div class="loading-art"></div>
+  <div class="loading-inner">
+    <h1 class="loading-title">🌊 BUTUR<br>ADVENTURES</h1>
+    <p class="loading-sub">Jelajah Ereke, Buton Utara</p>
+    <div class="loading-bar-wrap"><div id="loading-bar"></div></div>
+    <div id="loading-pct">0%</div>
+    <p id="loading-label">Memuat…</p>
+  </div>
+</div>
+<script>
+  // Loading progress hooks (batch 5, item 5): main.js calls these at real
+  // init milestones — the bar never moves on its own.
+  window.__erekeLoad = function (pct, label) {
+    var bar = document.getElementById('loading-bar');
+    var t = document.getElementById('loading-pct');
+    var l = document.getElementById('loading-label');
+    if (bar) bar.style.width = pct + '%';
+    if (t) t.textContent = Math.round(pct) + '%';
+    if (l && label) l.textContent = label;
+  };
+  window.__erekeLoadDone = function (showTitle) {
+    var s = document.getElementById('loading-screen');
+    if (s) s.style.display = 'none';
+    if (showTitle) { var t = document.getElementById('title-screen'); if (t) t.style.display = 'flex'; }
+  };
+  window.__erekeLoad(5, 'Memuat…');
+</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
