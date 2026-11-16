@@ -405,6 +405,37 @@ export function buildWorld(scene) {
     });
   }
 
+  // --- Houses lining the main roads (Jalan Poros Ereke / coast road + the
+  // roads between villages): in the real map houses stand along the roads,
+  // not only in village centres. Kept just off the road edges so the road,
+  // bridges and landmarks stay clear.
+  const roadsideHouses = [
+    // Coast road (Jalan Poros, x = 155), west / inland side.
+    [144, -160], [144, -124], [144, -112], [144, -70], [144, -52], [144, -34],
+    [144, -16], [144, 2], [144, 20], [144, 56], [144, 66], [144, 100], [144, 118],
+    // Coast road, east / beach side (clear of fishing markers + pier).
+    [163, -70], [163, 20], [163, 80],
+    // Ereke -> Loji Pantai.
+    [23, 30], [38, 39], [52, 44],
+    // Ereke -> Lokonea.
+    [0, 7], [-14, -24], [-24, -46],
+    // Ereke -> Kalibu.
+    [-10, 60], [-26, 83], [-41, 107],
+    // Ereke -> Kadacua (west road).
+    [-50, 12], [-90, 30], [-130, 12],
+    // Kalibu -> Lemo Ea, Linsowu -> Mowuru, Malalanda -> Jembatan Kayu Bone.
+    [-52, 132], [136, -26], [134, 140],
+  ];
+  const rColors = [[0xf1c40f, 0x2980b9], [0xecf0f1, 0xe74c3c], [0xf39c12, 0x27ae60], [0x9b59b6, 0x34495e], [0xfdffb6, 0x16a085]];
+  roadsideHouses.forEach(([hx, hz], i) => {
+    const [wall, roof] = rColors[i % rColors.length];
+    const h = makeHouse(5, 4.5, wall, roof);
+    h.position.set(hx, groundHeight(hx, hz), hz);
+    h.rotation.y = (i * 0.7) % 1.2;
+    group.add(h);
+    colliders.push({ minX: hx - 2.5, maxX: hx + 2.5, minZ: hz - 2.2, maxZ: hz + 2.2 });
+  });
+
   // --- RSUD Buton Utara (Jl. Poros Kalibu, Desa Loji): white block, red cross.
   const rsud = new THREE.Group();
   box(12, 5, 8, 0xf8f9fa, 0, 2.5, 0, rsud);
