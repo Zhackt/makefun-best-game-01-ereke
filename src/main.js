@@ -265,10 +265,15 @@ function openCostume() {
   <br><button class="btn ghost" data-close>Tutup (Esc)</button>`);
 }
 
-// 3D waypoint arrow: a cone floating above the player, pointing at the target.
+// 3D waypoint arrow: a small cone floating above the player, pointing at the
+// target. Hotfix (16 Nov, Bang's playtest): the cone used to be 1.6 long /
+// 1.1 wide — almost as tall as the hero — and dominated the head area, so
+// it is now HALF that size (0.8 long / 0.56 wide): still clearly visible
+// and pointing correctly, but proportional to the player and clear of the
+// name tag below it (name tag tops out at ~2.95, arrow bottom at ~3.3).
 // White halo outline (BackSide, slightly larger) so the arrow stays readable
 // at night — especially the black manual-marker arrow (item 5).
-const arrowGeo = new THREE.ConeGeometry(0.55, 1.6, 4);
+const arrowGeo = new THREE.ConeGeometry(0.28, 0.8, 4);
 arrowGeo.rotateX(Math.PI / 2); // tip now points along +Z
 const waypointArrow = new THREE.Mesh(arrowGeo, new THREE.MeshBasicMaterial({ color: 0xffd700 }));
 const arrowHalo = new THREE.Mesh(arrowGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide }));
@@ -1813,7 +1818,7 @@ function frame() {
     waypointArrow.material.color.setHex(col.hex);
     waypointArrow.visible = screen === 'play';
     const gy = player.mesh.position.y;
-    waypointArrow.position.set(player.x, gy + 3.6 + Math.sin(elapsed * 2) * 0.25, player.z);
+    waypointArrow.position.set(player.x, gy + 3.6 + Math.sin(elapsed * 2) * 0.12, player.z);
     waypointArrow.rotation.y = Math.atan2(target.x - player.x, target.z - player.z);
     wchip.style.display = 'block';
     wchip.textContent = `${target.icon} ${target.name} · ${Math.round(d)} m`;
