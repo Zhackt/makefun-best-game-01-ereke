@@ -31,7 +31,7 @@ export function sfxHurt(a) { tone(a, 140, 0.25, 'sawtooth', 0.12, 0, -70); tone(
 // (sword low/heavy, knife high/short, wood dull, torch a whoosh, rod default).
 const SLASH_TONE = {
   pedang: [320, 0.18, 'sawtooth', -220], pisau: [700, 0.1, 'sawtooth', -400],
-  kayu: [180, 0.14, 'triangle', -80], obor: [500, 0.16, 'sawtooth', -300],
+  kayu: [180, 0.14, 'triangle', -80], tongkat: [240, 0.16, 'triangle', -120], obor: [500, 0.16, 'sawtooth', -300],
 };
 export function sfxSlash(a, weapon) {
   const [f, d, t, s] = SLASH_TONE[weapon] || [600, 0.12, 'sawtooth', -350];

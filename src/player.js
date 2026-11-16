@@ -38,10 +38,11 @@ export function createPlayer() {
     swimming: false, freeBoat: false, titanic: false, // berenang / perahu kecil gratis / Kapal Raksasa
     rod: 1, bait: 0, boat: false, boatTier: 0, houses: {},
     gender: 'cowo', hair: 'pendek', shirt: 0x3498db,
+    name: '', // character name (title screen; 'Nelayan' if blank)
     xp: 0, fragments: 0, rareBait: 0, daysPlayed: 0, chestsFound: 0, coconuts: 0, gather: { wood: 0, fruit: 0, mushroom: 0 },
     titles: [], skins: [], skin: null, shopSkins: [], motoPaint: null, boatPaint: null, outfit: 'default', defeated: {},
     fish: {}, caught: {}, moving: false, walkPhase: 0,
-    held: 'rod', // what the character holds: rod | hand | pisau | pedang | obor | kayu | senter
+    held: 'rod', // what the character holds: rod | hand | pisau | pedang | obor | kayu | tongkat | senter
     vy: 0, airY: 0, // jump: vertical velocity + height above the ground
     _lastStep: 0, // walk-phase index of the last footstep sound played
   };

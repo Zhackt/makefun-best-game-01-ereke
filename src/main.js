@@ -3,16 +3,16 @@
 // ?shot=start|play|shop|end stages a deterministic scene for screenshots.
 import * as THREE from '../vendor/three.module.min.js';
 import { createScene } from './scene.js';
-import { buildWorld, updateSea, groundHeight, makePlayerMesh, makeHeldMesh } from './world.js';
+import { buildWorld, updateSea, groundHeight, makePlayerMesh, makeHeldMesh, makeNameTag } from './world.js';
 import { createPlayer, placePlayer, updatePlayer, updateCamera, addFish, collectionCount, sellAllFish, skinEffect, surfaceY, blockedAt, waterAt, boatDeckY } from './player.js';
 import { createFishing, startCast, updateFishing, cancelFishing } from './fishing.js';
 import { shopList, buyItem, boatList, buyBoat, fishPrices } from './shop.js';
-import { createMissions, missionProgress, canTurnIn, acceptMission, turnIn, doneCount, missionXp, createJobs, jobProgress, canJobTurnIn, acceptJob, jobTurnIn, missionUnlocked, nextMainMission, missionTracker } from './missions.js';
+import { createMissions, missionProgress, canTurnIn, acceptMission, turnIn, doneCount, missionXp, createJobs, jobProgress, canJobTurnIn, acceptJob, jobTurnIn, missionUnlocked, nextMainMission, missionChip } from './missions.js';
 import { createNPCs, npcNear, npcLine } from './npcs.js';
 import { createClock, updateClock, endDay, clockText, applyDayNight } from './daynight.js';
 import { createAudio, sfxSplash, sfxCoin, sfxCatch, sfxFail, sfxTalk, sfxSleep, sfxFanfare, sfxStep, sfxHurt, sfxSlash, sfxBite, sfxCrash, updateAmbient } from './audio.js';
 import { createUI, updateHUD, setPrompt, showToast, showBanner, updateTimers, showPanel, hidePanel, showEnd, hideEnd, drawMinimap, drawFullMap, setupFullMap, collectionHTML, missionsHTML, setupTouch, IS_TOUCH } from './ui.js';
-import { SPOTS, PLACES, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, SHOP_SKINS, THREAT_DAMAGE, HELD_ITEMS, WEAPON_DMG, WEAPONS, isNight, levelFromXp, levelTitle, SEA_X, SEA_Y, FREE_BOAT_MAX_X, FREE_BOAT_WARN_X, BOAT_LIMIT_X, BOAT_WARN_X, BOAT_WARN_TEXT, BOAT_ZONE_TABLES } from './data.js';
+import { SPOTS, PLACES, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, SHOP_SKINS, THREAT_DAMAGE, HELD_ITEMS, WEAPON_DMG, WEAPONS, isNight, levelFromXp, levelTitle, rankColor, SEA_X, SEA_Y, FREE_BOAT_MAX_X, FREE_BOAT_WARN_X, BOAT_LIMIT_X, BOAT_WARN_X, BOAT_WARN_TEXT, BOAT_ZONE_TABLES } from './data.js';
 import { readBest, saveBest, readRaceBest, saveRaceBest, saveGame, loadGame, clearSave, readLogin, writeLogin, readEvent, writeEvent } from './save.js';
 import { currentEvent, rivalsFor, playerRank, emptyEventState } from './events.js';
 import { HOUSES, RENT_PRICE } from './data.js';
@@ -20,9 +20,20 @@ import { stageShot } from './shots.js';
 
 const params = new URLSearchParams(window.location.search);
 const shot = params.get('shot');
+// Loading screen (batch 5, item 5): real progress only — the bar moves when
+// a stage actually finishes. The awaits let the browser paint each step;
+// without them the synchronous init would jump 5% straight to 100%.
+const loadTick = () => new Promise((r) => requestAnimationFrame(r));
+const loadStep = (pct, label) => { if (window.__erekeLoad) window.__erekeLoad(pct, label); };
 const canvas = document.getElementById('game');
+loadStep(30, 'Memuat script…');
+await loadTick();
 const { renderer, scene, camera, sun, hemi, moon } = createScene(canvas);
+loadStep(45, 'Menyiapkan layar…');
+await loadTick();
 const world = buildWorld(scene);
+loadStep(75, 'Membangun dunia Ereke…');
+await loadTick();
 const npcs = createNPCs(scene);
 const player = createPlayer();
 scene.add(player.mesh);
@@ -34,6 +45,8 @@ const missions = createMissions();
 const jobs = createJobs();
 const audio = createAudio();
 const ui = createUI();
+loadStep(90, 'Menyiapkan misi & toko…');
+await loadTick();
 const keys = new Set();
 let screen = 'title';
 document.body.classList.add('screen-title'); // hide HUD + touch controls while the title screen shows
@@ -62,6 +75,25 @@ function applyAppearance() {
   player.mesh = mesh;
   scene.add(mesh);
   updateHeldMesh(); // the hand mesh is a child of the player mesh: re-attach it
+  updateNameTag(); // same for the floating name tag above the head
+}
+
+/** Floating name tag (batch 5, item 4): white name + rank title in the rank
+    colour, above the head. Rebuilt only when the name or rank changes (and
+    after the mesh is rebuilt by applyAppearance). Called every frame — the
+    check is two string compares, the rebuild only on change. */
+function updateNameTag() {
+  if (!player.mesh) return;
+  const title = levelTitle(levelFromXp(player.xp || 0));
+  const key = `${player.name || 'Nelayan'}|${title}`;
+  if (player._nameTagKey === key && player.mesh.getObjectByName('nameTag')) return;
+  const old = player.mesh.getObjectByName('nameTag');
+  if (old) player.mesh.remove(old);
+  const tag = makeNameTag(player.name || 'Nelayan', title, rankColor(title));
+  tag.name = 'nameTag';
+  tag.position.set(0, 2.5, 0); // above the head (hero is ~1.9 tall)
+  player.mesh.add(tag);
+  player._nameTagKey = key;
 }
 
 /** Award XP; crossing a rank boundary triggers the SELAMAT! celebration. */
@@ -439,6 +471,7 @@ function snapshot() {
     jobs: jobs.map((j) => ({ id: j.id, status: j.status, progress: j.progress })),
     x: player.x, z: player.z,
     gender: player.gender, hair: player.hair, shirt: player.shirt, skin: player.skin,
+    name: player.name, // character name (title screen; 'Nelayan' if blank)
     skins: player.skins, shopSkins: player.shopSkins || [],
     xp: player.xp, fragments: player.fragments, rareBait: player.rareBait,
     daysPlayed: player.daysPlayed, chestsFound: player.chestsFound,
@@ -452,6 +485,7 @@ function applySave(s) {
   player.fish = s.fish || {}; player.caught = s.caught || {}; player.houses = s.houses || {};
   clock.day = s.day; clock.minutes = s.minutes;
   player.gender = s.gender || 'cowo'; player.hair = s.hair || 'pendek';
+  player.name = s.name || ''; // old saves have no name: stays blank until the title screen fills it
   player.shirt = s.shirt ?? 0x3498db; player.skin = s.skin || null;
   player.skins = s.skins || []; player.shopSkins = s.shopSkins || [];
   player.xp = s.xp || 0; player.fragments = s.fragments || 0; player.rareBait = s.rareBait || 0;
@@ -646,9 +680,11 @@ function startGame() {
 }
 
 function resetGame() {
+  const keepName = player.name; // same character, new run — the name survives
   scene.remove(player.mesh);
   const fresh = createPlayer();
   Object.assign(player, fresh);
+  player.name = keepName;
   player.walkways = world.walkways;
   scene.add(player.mesh);
   placePlayer(player, 62, 78, world.colliders);
@@ -1124,15 +1160,26 @@ setupTouch(ui);
     b.addEventListener('click', () => setHeld(h.id));
     list.appendChild(b);
   }
-  ui.heldBtn.addEventListener('click', () => {
+  // One toggle for the held-item panel, shared by the left HUD pill and the
+  // right-side "Senjata" button (batch 5, item 3): both open the same panel.
+  const toggleHeldPanel = () => {
     ui.heldPanel.style.display = ui.heldPanel.style.display === 'block' ? 'none' : 'block';
-  });
+  };
+  ui.heldBtn.addEventListener('click', toggleHeldPanel);
+  if (ui.weaponBtn) ui.weaponBtn.addEventListener('click', toggleHeldPanel);
+  ui.onWeapon = toggleHeldPanel; // touchstart path in setupTouch (ui.js)
   document.getElementById('held-close').addEventListener('click', () => { ui.heldPanel.style.display = 'none'; });
 })();
 // Touch help line: no keyboard on a phone, so show the touch controls instead.
 if (IS_TOUCH) document.getElementById('help').textContent = 'Joystick jalan · Geser kamera · AKSI memancing/bicara · 🗺️ peta';
 
-document.getElementById('start-btn').addEventListener('click', startGame);
+// --- Character name (batch 5, item 4): typed on the title screen, blank → 'Nelayan'. ---
+function readNameInput() {
+  const el = document.getElementById('name-input');
+  const v = (el.value || '').trim().slice(0, 16);
+  return v || 'Nelayan';
+}
+document.getElementById('start-btn').addEventListener('click', () => { player.name = readNameInput(); startGame(); });
 document.getElementById('restart-btn').addEventListener('click', resetGame);
 
 // --- Settings popup (title screen): full control list, closable. ---
@@ -1152,8 +1199,12 @@ if (existingSave) {
   const cb = document.getElementById('continue-btn');
   cb.style.display = 'inline-block';
   cb.textContent = `↻ Lanjutkan — Hari ${existingSave.day}, ${fmtRp(existingSave.money)}, Ikan ${Object.keys(existingSave.caught || {}).length}/12`;
+  // Old saves have no name: prefill the field when the save has one, and
+  // always take the field's value on continue (blank → 'Nelayan', then saved).
+  document.getElementById('name-input').value = existingSave.name || '';
   cb.addEventListener('click', () => {
     applySave(existingSave);
+    player.name = readNameInput();
     startGame();
     showToast(ui, `💾 Save dimuat — selamat datang kembali di Ereke, Hari ${clock.day}!`);
   });
@@ -1453,13 +1504,19 @@ function frame() {
   updateSea(world, elapsed);
   updateCamera(player, camera, dt);
   updateHUD(ui, player, clock, fishing);
-  // Mission tracker (item 12): always show the active/next main mission.
+  // Mission chip (batch 5, item 1): one short line, title only — the full
+  // mission text lives in the missions panel, never on the play screen.
+  // The chip sits directly under the HUD block (HUD wraps differently per
+  // screen width / level / boat, so its top is measured, not hard-coded).
   const mt = document.getElementById('mission-tracker');
   if (mt) {
-    const t = missionTracker(missions, player);
+    const t = missionChip(missions, player);
     if (mt.textContent !== t.text) mt.textContent = t.text;
     mt.classList.toggle('done', t.done);
+    const top = Math.round(ui.hud.getBoundingClientRect().bottom) + 6;
+    if (mt._chipTop !== top) { mt._chipTop = top; mt.style.top = `${top}px`; }
   }
+  updateNameTag(); // floating name + rank title above the head (batch 5, item 4)
   drawMinimap(ui, player, visited, PLACES, waypoint);
   updatePlaceLabels(world, player);
   // 3D waypoint arrow above the player + compass chip with live distance.
@@ -1484,6 +1541,9 @@ function frame() {
 }
 
 if (shot) {
+  // Screenshots: hide the loading screen now (the title screen is controlled
+  // by the shot code below, not by the loading flow).
+  if (window.__erekeLoadDone) window.__erekeLoadDone(false);
   stageShot(shot, { player, clock, missions, fishing, world, screen: (s) => { screen = s; }, startGame, placePlayer, endGame });
   if (shot === 'shop') openShop();
   if (shot === 'start') document.getElementById('title-screen').style.display = 'flex';
@@ -1501,4 +1561,10 @@ if (shot) {
   })();
 } else {
   frame();
+  // First frame painted → 100%, then the title screen (Mobile-Legends style:
+  // the bar holds at 100% for a beat before the transition).
+  requestAnimationFrame(() => {
+    loadStep(100, 'Siap!');
+    setTimeout(() => { if (window.__erekeLoadDone) window.__erekeLoadDone(true); }, 350);
+  });
 }

@@ -41,18 +41,15 @@ export function activeMainMission(missions) {
   return null;
 }
 
-/** HUD tracker text: always tells the player what the next main mission is. */
-export function missionTracker(missions, player) {
+/** HUD chip text (batch 5): title only, one line — the full details (giver,
+    place, progress, reward, lock reason) live in the missions panel, never
+    on the play screen. The selection logic is unchanged from batch 4. */
+export function missionChip(missions, player) {
   const active = activeMainMission(missions);
-  if (active) {
-    const p = missionProgress(active, player);
-    return { text: `⭐ Misi Utama: ${active.title} — ${p.have}/${p.need}`, done: false };
-  }
+  if (active) return { text: `⭐ Misi: ${active.title}`, done: false };
   const next = nextMainMission(missions);
-  if (!next) return { text: '🏆 Semua Misi Utama selesai! Kamu Nelayan Legendaris sejati!', done: true };
-  const lock = missionUnlocked(next, missions, player);
-  if (!lock.ok) return { text: `⭐ Misi berikutnya: ${next.title} — ${lock.reason}`, done: false };
-  return { text: `⭐ Misi berikutnya: ${next.title} — bicara dengan ${next.giver} (${next.place})`, done: false };
+  if (!next) return { text: '🏆 Semua Misi selesai!', done: true };
+  return { text: `⭐ Misi: ${next.title}`, done: false };
 }
 
 export function missionProgress(m, player) {

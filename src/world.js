@@ -210,6 +210,36 @@ export function makeLabel(text, scale = 1) {
   return spr;
 }
 
+/** Floating name tag above the player's head (batch 5, item 4): white name
+    on top, rank title below in the rank colour. One sprite, rebuilt when
+    the name or rank changes. Small on purpose — readable, never dominant. */
+export function makeNameTag(name, title, color) {
+  const cv = document.createElement('canvas');
+  const ctx = cv.getContext('2d');
+  const nameFont = 'bold 40px system-ui, sans-serif';
+  const titleFont = 'bold 28px system-ui, sans-serif';
+  ctx.font = nameFont;
+  const w1 = Math.ceil(ctx.measureText(name).width);
+  ctx.font = titleFont;
+  const w2 = Math.ceil(ctx.measureText(title).width);
+  const w = Math.max(w1, w2) + 28;
+  cv.width = w; cv.height = 84;
+  const c2 = cv.getContext('2d');
+  c2.textAlign = 'center'; c2.textBaseline = 'middle';
+  c2.fillStyle = 'rgba(10, 25, 40, 0.72)';
+  c2.beginPath(); c2.roundRect(0, 0, w, cv.height, 12); c2.fill();
+  c2.font = nameFont; c2.fillStyle = '#ffffff';
+  c2.fillText(name, w / 2, 24);
+  c2.font = titleFont; c2.fillStyle = color;
+  c2.fillText(title, w / 2, 62);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  // Aspect must match the canvas (w/84) so the text never stretches.
+  spr.scale.set((w / 44) * 0.47, 0.9, 1);
+  return spr;
+}
+
 /** Village welcome sign: wooden posts + brown board with a light paper
   panel, and the village name as a floating label above it (same pattern as
   the race start sign). No collider — it stands just off the road edge. */
@@ -434,6 +464,13 @@ export function makeHeldMesh(held) {
   } else if (held === 'kayu') {
     const k = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.75, 0.1), wood);
     k.position.y = 0.3; k.rotation.z = 0.2; g.add(k);
+  } else if (held === 'tongkat') {
+    // Long thin walking staff: twice as tall as the short wood club, thinner,
+    // with a darker tip — clearly a different weapon in the hand.
+    const s = new THREE.Mesh(new THREE.BoxGeometry(0.07, 1.5, 0.07), wood);
+    s.position.y = 0.65; s.rotation.z = 0.15; g.add(s);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.09), dark);
+    tip.position.y = 1.42; tip.rotation.z = 0.15; g.add(tip);
   } else if (held === 'senter') {
     const b = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.32, 0.13), dark);
     b.position.y = 0.2; g.add(b);

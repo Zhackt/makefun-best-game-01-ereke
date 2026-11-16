@@ -17,7 +17,8 @@ export function createUI() {
     fishProgress: $('fish-progress'),
     title: $('title-screen'), end: $('end-screen'), endTitle: $('end-title'), endText: $('end-text'),
     touch: $('touch'), joy: $('joy'), joyKnob: $('joy-knob'), actionBtn: $('action-btn'),
-    jumpBtn: $('jump-btn'), attackBtn: $('attack-btn'), heldBtn: $('held-btn'), heldPanel: $('held-panel'),
+    jumpBtn: $('jump-btn'), attackBtn: $('attack-btn'), weaponBtn: $('weapon-btn'),
+    heldBtn: $('held-btn'), heldPanel: $('held-panel'),
     bannerT: 0, toastT: 0, joyVec: { x: 0, y: 0 }, onAction: null, onTravel: null, onCamDrag: null,
     onJump: null, onAttack: null,
   };
@@ -389,4 +390,7 @@ export function setupTouch(ui) {
   ui.actionBtn.addEventListener('touchend', (e) => { e.preventDefault(); ui.actionHeld = false; }, { passive: false });
   if (ui.jumpBtn) ui.jumpBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (ui.onJump) ui.onJump(); }, { passive: false });
   if (ui.attackBtn) ui.attackBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (ui.onAttack) ui.onAttack(); }, { passive: false });
+  // "Senjata" button (batch 5, item 3): a plain DOM button like AKSI/LONCAT,
+  // so a tap on it never reaches the canvas camera-drag handler.
+  if (ui.weaponBtn) ui.weaponBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (ui.onWeapon) ui.onWeapon(); }, { passive: false });
 }

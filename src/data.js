@@ -154,10 +154,11 @@ export const HELD_ITEMS = [
   { id: 'pedang', icon: '🗡️', name: 'Pedang', note: 'dmg 32' },
   { id: 'obor', icon: '🔥', name: 'Obor', note: 'dmg 16 · cahaya hangat' },
   { id: 'kayu', icon: '🪵', name: 'Kayu', note: 'dmg 10' },
+  { id: 'tongkat', icon: '🦯', name: 'Tongkat', note: 'dmg 16' },
   { id: 'senter', icon: '🔦', name: 'Senter', note: 'sorotan malam' },
 ];
-export const WEAPON_DMG = { hand: 6, kayu: 10, obor: 16, pisau: 24, pedang: 32, senter: 6 };
-export const WEAPONS = new Set(['kayu', 'obor', 'pisau', 'pedang']); // show the SERANG button
+export const WEAPON_DMG = { hand: 6, kayu: 10, tongkat: 16, obor: 16, pisau: 24, pedang: 32, senter: 6 };
+export const WEAPONS = new Set(['kayu', 'tongkat', 'obor', 'pisau', 'pedang']); // show the SERANG button
 
 // Hidden treasure chests (3 map fragments combine to reveal one).
 export const TREASURE_CHESTS = [
@@ -293,6 +294,10 @@ export function levelTitle(level) {
   const row = LEVEL_TITLES.find((r) => level >= r.min && level <= r.max);
   return row ? row.title : 'Legenda Butur';
 }
+// Rank title colours for the floating name tag (batch 5, item 4): one colour
+// per rank; the player's name stays white. Pemula grey, Dewa gold.
+export const RANK_COLORS = { Pemula: '#cfd6dd', Junior: '#2ecc71', Senior: '#3498db', Master: '#a55eea', Grandmaster: '#e67e22', Legenda: '#ff6b81', Dewa: '#ffd700' };
+export function rankColor(title) { return RANK_COLORS[title] || '#ffffff'; }
 export function isNight(minutes) { return minutes >= 18 * 60; }
 export function isSunset(minutes) { return minutes >= 17 * 60 && minutes < 18 * 60 + 30; }
 
