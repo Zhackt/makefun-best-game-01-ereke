@@ -38,6 +38,10 @@
   #fish-progress-wrap { height: 10px; background: rgba(0,0,0,.65); border: 2px solid #fff; border-radius: 5px; overflow: hidden; margin-top: 6px; }
   #fish-progress { height: 100%; width: 0%; background: #f1c40f; }
   #waypoint-chip { position: fixed; top: 52px; left: 10px; background: rgba(12,24,38,.85); color: #ffd700; border: 1px solid rgba(255,215,0,.5); border-radius: 20px; padding: 6px 12px; font-size: 13px; font-weight: 700; z-index: 5; display: none; }
+  /* Backup-code paste field, hidden by default (dots, like a password field);
+     the eye button toggles this class. Visual masking only — the value is
+     never changed, so toggling cannot lose the pasted code. */
+  #backup-code-input.masked { -webkit-text-security: disc; text-security: disc; }
   #panel { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 20; }
   #panel-body { background: #12283d; color: #fff; border: 2px solid #f1c40f; border-radius: 14px; padding: 22px 26px; width: min(620px, 92vw); max-height: 84vh; overflow-y: auto; }
   #panel-body h2 { margin: 0 0 6px; color: #f1c40f; }
@@ -126,10 +130,18 @@
   .held-row small { opacity: .8; font-weight: 500; }
   #help { position: fixed; bottom: 10px; left: 10px; color: rgba(255,255,255,.75); font-size: 12px; text-shadow: 0 1px 2px #000; z-index: 5; }
   @media (max-width: 700px) { #minimap { width: 84px; height: 58px; } #minimap-label { top: 72px; } #held-btn { top: 112px; } #held-panel { top: 156px; } #mission-tracker { top: 190px; max-width: 60vw; } #waypoint-chip { top: 232px; } /* 16 Nov: the HUD wraps to 4 rows at Lv 1 (bottom 147) and 5 rows at high level (bottom 184) on a phone, so the chip must sit below 184 or it lands on the map button / level pill — batch 5: the mission chip top is measured from the HUD bottom in JS, 190px is only the pre-JS fallback */ .card { padding: 16px 14px; } .card h1 { font-size: 32px; } .card h3 { font-size: 16px; margin: 4px 0 8px; } .card p { font-size: 14px; line-height: 1.45; } .card .keys { font-size: 12px; padding: 8px; } .gender-btn { padding: 10px 14px; font-size: 15px; } #hud { max-width: 52vw; } .pill { font-size: 12px; padding: 5px 9px; } }
-  /* Landscape (batch 5, item 2): smaller menu text so nothing covers the
+  /* Landscape (batch 5, item 2; batch 6): smaller menu text so nothing covers the
      middle of the screen where the character stands. HUD pills ~11px,
-     mission chip max 36vw (clears the centre zone), minimap label 10px. */
-  @media (max-height: 500px) { #minimap { width: 84px; height: 58px; } #minimap-label { top: 72px; font-size: 10px; } #mission-tracker { top: 88px; max-width: 36vw; font-size: 12px; padding: 5px 10px; } #waypoint-chip { top: 132px; font-size: 12px; padding: 5px 10px; } #hud { gap: 6px; } .pill { font-size: 11px; padding: 5px 8px; } #energy-bar { width: 60px; } #help { font-size: 10px; } }
+     mission chip max 36vw (clears the centre zone), minimap label 10px.
+     Batch 6: on a real phone the landscape viewport is only ~276-300px tall
+     (browser chrome eats height), so the old vertical right-hand stack
+     (SERANG on top of the minimap) and the held pill (on top of the mission
+     chip) both overlapped. Fixes: joystick shrinks to 100px and the held pill
+     moves BESIDE it (vertically centred); the right buttons become a
+     bottom-right cluster (AKSI + LONCAT + SERANG in one row, Senjata above
+     AKSI) whose top edge stays well below the minimap; the waypoint chip
+     moves just under the mission chip. */
+  @media (max-height: 500px) { #minimap { width: 84px; height: 58px; } #minimap-label { top: 72px; font-size: 10px; } #mission-tracker { top: 88px; max-width: 36vw; font-size: 12px; padding: 5px 10px; } #waypoint-chip { top: 108px; font-size: 12px; padding: 5px 10px; } #hud { gap: 6px; } .pill { font-size: 11px; padding: 5px 8px; } #energy-bar { width: 60px; } #help { font-size: 10px; } #joy { width: 100px; height: 100px; } #joy-knob { width: 42px; height: 42px; margin: -21px 0 0 -21px; } body.touch #held-btn { left: 130px; bottom: 57px; } #action-btn { right: 16px; bottom: 14px; width: 84px; height: 84px; font-size: 15px; } #jump-btn { right: 108px; bottom: 20px; width: 56px; height: 56px; font-size: 11px; } #attack-btn { right: 172px; bottom: 20px; width: 56px; height: 56px; font-size: 11px; } #weapon-btn { right: 16px; bottom: 106px; width: 56px; height: 56px; font-size: 10px; } }
 </style>
 </head>
 <body>
@@ -149,7 +161,7 @@
 <div id="fullmap">
   <div id="map-box">
     <button class="btn" id="map-close-x" title="Tutup peta">✕</button>
-    <div id="map-head"><b>🗺️ Peta Ereke — Buton Utara</b><span>Klik tempat untuk menandai tujuan (panah emas akan menunjuk arahnya). Seret untuk geser, roda/+/- / cubit untuk zoom.</span></div>
+    <div id="map-head"><b>🗺️ Peta Ereke — Buton Utara</b><span>Klik tempat untuk menandai tujuan (panah hitam akan menunjuk arahnya). Seret untuk geser, roda/+/- / cubit untuk zoom.</span></div>
     <canvas id="mapcanvas" width="900" height="560"></canvas>
     <div id="map-controls">
       <button class="btn" id="map-zoom-in">＋ Zoom</button>
@@ -200,6 +212,20 @@
 <div id="settings-popup"><div class="popup-card">
   <h2>⚙️ Pengaturan — Kontrol</h2>
   <div class="settings-body">🎮 <b>WASD</b> jalan &nbsp;·&nbsp; <b>Mouse</b> putar kamera (klik untuk kunci) &nbsp;·&nbsp; <b>F</b> memancing &nbsp;·&nbsp; <b>Spasi</b> tarik saat zona hijau &nbsp;·&nbsp; <b>E</b> bicara / naik motor &amp; mobil &nbsp;·&nbsp; <b>M</b> peta besar (tandai tujuan) &nbsp;·&nbsp; <b>C</b> buku ikan &nbsp;·&nbsp; <b>V</b> misi &nbsp;·&nbsp; <b>T</b> tidur &nbsp;·&nbsp; <b>B</b> naik/turun perahu &nbsp;·&nbsp; <b>Esc</b> jeda &nbsp;·&nbsp; <b>N</b> suara<br><br>📱 Di HP: joystick kiri untuk jalan, geser kanan untuk kamera, tombol AKSI untuk memancing, tombol 🗺️ untuk peta.</div>
+  <div style="text-align:left;border-top:1px solid rgba(255,255,255,.2);margin-top:14px;padding-top:12px">
+    <h3 style="color:#f1c40f;margin:0 0 6px;font-size:16px">💾 Cadangan Save</h3>
+    <p style="font-size:13px;line-height:1.5;opacity:.9;margin:0 0 10px">Salin kodemu dan simpan di catatan/WA — kalau data browser hilang atau ganti HP, tempel kode ini untuk mengembalikan nama, level, skin, dan semua progres. Kode tidak pernah dikirim ke mana pun (game offline).</p>
+    <button class="btn" id="backup-copy">📋 Salin Kode Save</button>
+    <button class="btn ghost" id="backup-paste-btn">📥 Tempel Kode Save</button>
+    <div id="backup-paste-box" style="display:none;margin-top:10px">
+      <div style="position:relative">
+        <textarea id="backup-code-input" class="masked" rows="3" placeholder="Tempel kode save di sini…" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.1);color:#fff;border:2px solid rgba(255,255,255,.4);border-radius:8px;padding:10px 52px 10px 10px;font-size:13px"></textarea>
+        <button type="button" id="backup-eye" title="Tampilkan/sembunyikan kode" aria-label="Tampilkan atau sembunyikan kode save" style="position:absolute;top:6px;right:6px;width:40px;height:40px;min-width:40px;background:rgba(255,255,255,.12);color:#fff;border:2px solid rgba(255,255,255,.4);border-radius:8px;font-size:18px;line-height:1;cursor:pointer;padding:0">👁️</button>
+      </div>
+      <button class="btn" id="backup-restore" style="margin-top:8px">✅ Pulihkan Save</button>
+    </div>
+    <p id="backup-status" style="font-size:13px;line-height:1.5;min-height:18px;margin:8px 0 0"></p>
+  </div>
   <button class="btn" id="settings-close">Tutup</button>
 </div></div>
 <div id="touch">
