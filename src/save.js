@@ -22,6 +22,23 @@ export const RACE_KEY = 'ereke-race-best-v1';
 export const SAVE_KEY = 'ereke-save-v1';
 export const LOGIN_KEY = 'ereke-login-v1';
 export const EVENT_KEY = 'ereke-event-v1';
+export const NAME_KEY = 'ereke-player-name-v1';
+
+/** Character name, saved the moment it is typed on the title screen (batch 6,
+    item 3) — not only when sleeping. The full save still carries the name
+    too; this small key is what prefills the title-screen field on reopen. */
+export function readPlayerName() {
+  try { return window.localStorage.getItem(NAME_KEY) || ''; }
+  catch { return ''; }
+}
+export function writePlayerName(name) {
+  try {
+    const v = (name || '').trim().slice(0, 16);
+    if (v) window.localStorage.setItem(NAME_KEY, v);
+    else window.localStorage.removeItem(NAME_KEY);
+    return v;
+  } catch { return ''; }
+}
 
 /** Daily login streak (real days). { lastDate: 'YYYY-MM-DD', streak: n } */
 export function readLogin() {

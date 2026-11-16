@@ -118,11 +118,12 @@ export function drawMinimap(ui, player, visited, places, waypoint) {
     ctx.beginPath(); ctx.arc(sx(z.x), sy(z.z), Math.max(3, z.r * s), 0, 7); ctx.stroke();
     ctx.setLineDash([]);
   }
-  // Waypoint marker.
+  // Waypoint marker — colour follows the 3D arrow (item 5); a black marker
+  // gets a white rim so it stays visible on the green minimap.
   if (waypoint) {
-    ctx.fillStyle = '#ffd700';
+    ctx.fillStyle = waypoint.color || '#ffd700';
     ctx.beginPath(); ctx.arc(sx(waypoint.x), sy(waypoint.z), 6, 0, 7); ctx.fill();
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = waypoint.color === '#111111' ? '#fff' : '#000'; ctx.lineWidth = 1.5; ctx.stroke();
   }
   // Nearby places: dot + readable name (BotW-style fog: unvisited places show '?').
   ctx.font = 'bold 11px system-ui, sans-serif'; ctx.textAlign = 'left';
@@ -287,12 +288,15 @@ export function drawFullMap(ui, player, places, waypoint) {
         ctx.strokeText(p.name, lx, ly); ctx.fillText(p.name, lx, ly);
       }
     }
-    // Waypoint.
+    // Waypoint — colour follows the 3D arrow (item 5); a black marker gets a
+    // white rim + white label so it stays visible on the map.
     if (waypoint) {
-      ctx.fillStyle = '#ffd700'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+      const wc = waypoint.color || '#ffd700';
+      const dark = wc === '#111111';
+      ctx.fillStyle = wc; ctx.strokeStyle = dark ? '#fff' : '#000'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(sx(waypoint.x), sy(waypoint.z), 9, 0, 7); ctx.fill(); ctx.stroke();
       ctx.font = 'bold 13px system-ui, sans-serif';
-      ctx.fillStyle = '#ffd700';
+      ctx.fillStyle = dark ? '#fff' : wc;
       ctx.fillText('★ ' + waypoint.name, sx(waypoint.x) + 12, sy(waypoint.z) - 8);
     }
     // Player arrow.
@@ -314,7 +318,7 @@ export function collectionHTML(player) {
   return `<h2>📖 Buku Koleksi Ikan</h2><p>Tangkap 12 spesies untuk menjadi Nelayan Legendaris Ereke.</p><div class="fish-list">${rows}</div><button class="btn" data-close>Tutup (C)</button>`;
 }
 
-export function missionsHTML(missions, player, jobs = []) {
+export function missionsHTML(missions, player, jobs = [], trackedId = null) {
   const tierEmoji = { Mudah: '🟢 Mudah', Sedang: '🟡 Sedang', Sulit: '🔴 Sulit' };
   const next = nextMainMission(missions);
   const row = (m) => {
@@ -325,7 +329,14 @@ export function missionsHTML(missions, player, jobs = []) {
       : !lock.ok ? lock.reason
       : '⚪ Belum diambil';
     const isNext = next && next.id === m.id && m.status !== 'done';
-    return `<div class="fish-row mission-row ${m.status === 'done' ? 'done' : ''} ${isNext ? 'next' : ''} ${!lock.ok ? 'locked' : ''}"><b>${isNext ? '➡️ ' : ''}${m.title}</b><span>${tierEmoji[m.tier] || m.tier}</span><span>${m.giver} · ${m.place || ''}</span><span>${st}</span><span>${fmtRp(m.reward)}${m.rareBait ? ' +🎁' : ''}${m.fragment ? ' +🧩' : ''}</span></div>`;
+    // "Lacak" (batch 6, item 5): only active missions can be tracked — the
+    // arrow then points at this mission's target (blue for a side mission,
+    // yellow for a main mission, green when it is ready to claim). The button
+    // sits on its own line so the row layout never breaks on a phone.
+    const isTracked = trackedId && trackedId === m.id;
+    const trackBtn = m.status === 'active'
+      ? `<button class="btn ghost" data-track="${m.id}" style="width:100%;margin:2px 0 8px">${isTracked ? '✅ Dilacak — panah menunjuk ke misi ini' : '📍 Lacak misi ini'}</button>` : '';
+    return `<div class="fish-row mission-row ${m.status === 'done' ? 'done' : ''} ${isNext ? 'next' : ''} ${!lock.ok ? 'locked' : ''}"><b>${isNext ? '➡️ ' : ''}${m.title}</b><span>${tierEmoji[m.tier] || m.tier}</span><span>${m.giver} · ${m.place || ''}</span><span>${st}</span><span>${fmtRp(m.reward)}${m.rareBait ? ' +🎁' : ''}${m.fragment ? ' +🧩' : ''}</span></div>${trackBtn}`;
   };
   const main = MAIN_CHAIN.map((id) => missions.find((m) => m.id === id)).filter(Boolean);
   const side = missions.filter((m) => m.kind !== 'utama');
@@ -361,7 +372,10 @@ export function setupTouch(ui) {
         const len = Math.hypot(dx, dy);
         if (len > 1) { dx /= len; dy /= len; }
         ui.joyVec = { x: dx, y: dy };
-        knob.style.transform = `translate(${dx * 34}px, ${dy * 34}px)`;
+        // Knob travel scales with the joystick size (100px in landscape,
+        // 124px elsewhere): max offset = (joy - knob) / 2 - 2.
+        const kmax = Math.max(18, (r.width - knob.offsetWidth) / 2 - 2);
+        knob.style.transform = `translate(${dx * kmax}px, ${dy * kmax}px)`;
       } else if (t.identifier === camId) {
         if (ui.onCamDrag) ui.onCamDrag(t.clientX - lastX, t.clientY - lastY);
         lastX = t.clientX; lastY = t.clientY;

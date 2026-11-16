@@ -7,13 +7,13 @@ import { buildWorld, updateSea, groundHeight, makePlayerMesh, makeHeldMesh, make
 import { createPlayer, placePlayer, updatePlayer, updateCamera, addFish, collectionCount, sellAllFish, skinEffect, surfaceY, blockedAt, waterAt, boatDeckY } from './player.js';
 import { createFishing, startCast, updateFishing, cancelFishing } from './fishing.js';
 import { shopList, buyItem, boatList, buyBoat, fishPrices } from './shop.js';
-import { createMissions, missionProgress, canTurnIn, acceptMission, turnIn, doneCount, missionXp, createJobs, jobProgress, canJobTurnIn, acceptJob, jobTurnIn, missionUnlocked, nextMainMission, missionChip } from './missions.js';
-import { createNPCs, npcNear, npcLine } from './npcs.js';
+import { createMissions, missionProgress, canTurnIn, acceptMission, turnIn, doneCount, missionXp, createJobs, jobProgress, canJobTurnIn, acceptJob, jobTurnIn, missionUnlocked, nextMainMission, activeMainMission, missionChip } from './missions.js';
+import { createNPCs, npcNear, npcLine, NPC_DEFS } from './npcs.js';
 import { createClock, updateClock, endDay, clockText, applyDayNight } from './daynight.js';
 import { createAudio, sfxSplash, sfxCoin, sfxCatch, sfxFail, sfxTalk, sfxSleep, sfxFanfare, sfxStep, sfxHurt, sfxSlash, sfxBite, sfxCrash, updateAmbient } from './audio.js';
 import { createUI, updateHUD, setPrompt, showToast, showBanner, updateTimers, showPanel, hidePanel, showEnd, hideEnd, drawMinimap, drawFullMap, setupFullMap, collectionHTML, missionsHTML, setupTouch, IS_TOUCH } from './ui.js';
-import { SPOTS, PLACES, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, SHOP_SKINS, THREAT_DAMAGE, HELD_ITEMS, WEAPON_DMG, WEAPONS, isNight, levelFromXp, levelTitle, rankColor, SEA_X, SEA_Y, FREE_BOAT_MAX_X, FREE_BOAT_WARN_X, BOAT_LIMIT_X, BOAT_WARN_X, BOAT_WARN_TEXT, BOAT_ZONE_TABLES } from './data.js';
-import { readBest, saveBest, readRaceBest, saveRaceBest, saveGame, loadGame, clearSave, readLogin, writeLogin, readEvent, writeEvent } from './save.js';
+import { SPOTS, PLACES, MONSTERS, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, SHOP_SKINS, THREAT_DAMAGE, HELD_ITEMS, WEAPON_DMG, WEAPONS, isNight, levelFromXp, levelTitle, rankColor, SEA_X, SEA_Y, FREE_BOAT_MAX_X, FREE_BOAT_WARN_X, BOAT_LIMIT_X, BOAT_WARN_X, BOAT_WARN_TEXT, BOAT_ZONE_TABLES } from './data.js';
+import { readBest, saveBest, readRaceBest, saveRaceBest, saveGame, loadGame, clearSave, readLogin, writeLogin, readEvent, writeEvent, readPlayerName, writePlayerName } from './save.js';
 import { currentEvent, rivalsFor, playerRank, emptyEventState } from './events.js';
 import { HOUSES, RENT_PRICE } from './data.js';
 import { stageShot } from './shots.js';
@@ -61,7 +61,8 @@ let elapsed = 0;
 let haggle = null; // { total, n, marker, dir, timer } — warung haggling timing bar
 let race = null; // { t, cp } — motorbike checkpoint race up Bukit Lamoliandu
 let raceBest = readRaceBest();
-let waypoint = null; // { x, z, name } — set from the full map; NO fast travel
+let waypoint = null; // { x, z, name, kind: 'manual' | 'chest' } — set from the full map; NO fast travel
+let trackedMissionId = null; // mission id Bang tapped "Lacak" on (item 5); null = follow the HUD chip's mission
 let jobCrates = []; // { mesh, x, z, jobId } — crates/nets spawned by active carry jobs
 const evt = currentEvent();
 let eventState = readEvent();
@@ -102,9 +103,14 @@ function updateNameTag() {
 /** Award XP; crossing a rank boundary triggers the SELAMAT! celebration. */
 function gainXp(n) {
   const before = levelTitle(levelFromXp(player.xp || 0));
+  const lvBefore = levelFromXp(player.xp || 0);
   player.xp = (player.xp || 0) + Math.round(n * skinEffect(player, 'xp'));
   const after = levelTitle(levelFromXp(player.xp));
   if (after !== before) rankUp(after);
+  // Autosave (batch 6, item 4): any level-up writes the save at once, so
+  // progress survives a closed tab / crash before the next sleep. (rankUp
+  // already saves on a title change; this covers plain level-ups.)
+  if (levelFromXp(player.xp) > lvBefore) saveGame(snapshot());
 }
 
 function rankUp(title) {
@@ -255,12 +261,94 @@ function openProfile() {
 }
 document.getElementById('level-pill').addEventListener('click', () => { if (screen === 'play') openProfile(); });
 
-// 3D waypoint arrow: a gold cone floating above the player, pointing at the waypoint.
+// 3D waypoint arrow: a cone floating above the player, pointing at the target.
+// White halo outline (BackSide, slightly larger) so the arrow stays readable
+// at night — especially the black manual-marker arrow (item 5).
 const arrowGeo = new THREE.ConeGeometry(0.55, 1.6, 4);
 arrowGeo.rotateX(Math.PI / 2); // tip now points along +Z
 const waypointArrow = new THREE.Mesh(arrowGeo, new THREE.MeshBasicMaterial({ color: 0xffd700 }));
+const arrowHalo = new THREE.Mesh(arrowGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.BackSide }));
+arrowHalo.scale.setScalar(1.18);
+waypointArrow.add(arrowHalo);
 waypointArrow.visible = false;
 scene.add(waypointArrow);
+
+// Waypoint arrow colours (batch 6, item 5 — Bang's final mapping):
+// 🟡 yellow = main mission · 🔵 blue = side mission · 🟢 green = mission ready to claim
+// 🔴 red = being attacked (top priority) · ⚫ black = manual map marker · gold = treasure chest.
+// `hex` colours the 3D arrow; `css` colours the compass chip text (brightened
+// so it stays readable on the chip's dark background at night). The black
+// state needs a light chip background, or black text on dark blue is unreadable.
+const ARROW_COLORS = {
+  main: { hex: 0xffd700, css: '#ffd700', chipBg: null },
+  side: { hex: 0x2f7fe0, css: '#5aa9ff', chipBg: null },
+  done: { hex: 0x22c55e, css: '#34d399', chipBg: null },
+  attack: { hex: 0xef4444, css: '#ff6b5e', chipBg: null },
+  manual: { hex: 0x111111, css: '#111111', chipBg: 'rgba(245,245,245,.93)' },
+  chest: { hex: 0xffd700, css: '#ffd700', chipBg: null },
+};
+
+/** The monster currently striking the player: nearest alive monster within
+    7 m — the same range the counterattack loop below uses. */
+function attackingMonster() {
+  let best = null; let d = 7;
+  for (const mon of world.monsters) {
+    if (!mon.alive) continue;
+    const dist = Math.hypot(mon.x - player.x, mon.z - player.z);
+    if (dist < d) { d = dist; best = mon; }
+  }
+  return best;
+}
+
+/** Where the arrow points for a mission: the monster to defeat, the place to
+    search, or the giver to turn in to. */
+function missionTarget(m) {
+  if (!m) return null;
+  if (m.need && m.need.monster) {
+    const mon = MONSTERS.find((x) => x.id === m.need.monster);
+    if (mon) return { x: mon.x, z: mon.z };
+  }
+  if (m.need && m.need.find && m.need.find.at) {
+    const p = PLACES.find((x) => x.id === m.need.find.at);
+    if (p) return { x: p.x, z: p.z };
+  }
+  const giver = NPC_DEFS.find((n) => n.name === m.giver);
+  if (giver) return { x: giver.x, z: giver.z };
+  return null;
+}
+
+/** The mission the arrow follows: the one Bang tapped "Lacak" on (if still
+    active), else the same mission the HUD chip follows (active main, else
+    next main). */
+function trackedMission() {
+  if (trackedMissionId) {
+    const t = missions.find((m) => m.id === trackedMissionId);
+    if (t && t.status === 'active') return t;
+    trackedMissionId = null; // tracked mission done or gone: fall back
+  }
+  return activeMainMission(missions) || nextMainMission(missions);
+}
+
+/** The arrow's current target, by priority: attack (red) > manual/chest
+    waypoint (black/gold) > tracked mission (yellow main / blue side / green
+    ready to claim). Returns null when the arrow should hide. */
+function currentArrowState() {
+  const attacker = attackingMonster();
+  if (attacker) return { state: 'attack', x: attacker.x, z: attacker.z, name: attacker.name, icon: '⚔️' };
+  if (waypoint) {
+    const st = waypoint.kind === 'chest' ? 'chest' : 'manual';
+    return { state: st, x: waypoint.x, z: waypoint.z, name: waypoint.name, icon: '📍', kind: waypoint.kind };
+  }
+  const m = trackedMission();
+  if (m) {
+    const t = missionTarget(m);
+    if (t) {
+      const done = m.status === 'active' && canTurnIn(m, player);
+      return { state: done ? 'done' : (m.kind === 'utama' ? 'main' : 'side'), x: t.x, z: t.z, name: m.title, icon: '⭐' };
+    }
+  }
+  return null;
+}
 
 function nearRaceSign() { return Math.hypot(player.x - world.raceSign.x, player.z - world.raceSign.z) < 5; }
 
@@ -383,7 +471,9 @@ function openBoatShop() {
 function openMap() {
   screen = 'map';
   document.getElementById('fullmap').style.display = 'flex';
-  drawFullMap(ui, player, PLACES, waypoint);
+  // The full-map marker follows the same target + colour as the 3D arrow.
+  const target = currentArrowState();
+  drawFullMap(ui, player, PLACES, target && { x: target.x, z: target.z, name: target.name, color: ARROW_COLORS[target.state].css });
 }
 function closeMap() {
   document.getElementById('fullmap').style.display = 'none';
@@ -441,7 +531,7 @@ function openNpc(npc) {
 }
 
 function openBook() { screen = 'book'; showPanel(ui, collectionHTML(player)); }
-function openMissions() { screen = 'missions'; showPanel(ui, missionsHTML(missions, player, jobs)); }
+function openMissions() { screen = 'missions'; showPanel(ui, missionsHTML(missions, player, jobs, trackedMissionId)); }
 
 function closePanel() {
   hidePanel(ui);
@@ -479,6 +569,7 @@ function snapshot() {
     xp: player.xp, fragments: player.fragments, rareBait: player.rareBait,
     daysPlayed: player.daysPlayed, chestsFound: player.chestsFound,
     coconuts: player.coconuts, gather: player.gather, titles: player.titles, defeated: player.defeated,
+    trackedMission: trackedMissionId, // mission the arrow follows (item 5); null = follow the HUD chip's mission
   };
 }
 
@@ -495,6 +586,7 @@ function applySave(s) {
   player.daysPlayed = s.daysPlayed || 0; player.chestsFound = s.chestsFound || 0;
   player.coconuts = s.coconuts || 0; player.gather = s.gather || { wood: 0, fruit: 0, mushroom: 0 };
   player.titles = s.titles || []; player.defeated = s.defeated || {};
+  trackedMissionId = s.trackedMission || null; // old saves have none: fall back to the chip's mission
   for (const sj of s.jobs || []) {
     const j = jobs.find((x) => x.id === sj.id);
     if (j) { j.status = sj.status; j.progress = sj.progress; }
@@ -765,7 +857,7 @@ function maybeRevealChest() {
   if (!next) return;
   next.revealed = true; next.mesh.visible = true;
   showToast(ui, `🗺️ 3 fragmen terkumpul! Peti harta muncul di ${next.name} — ikuti panah emas!`);
-  waypoint = { x: next.x, z: next.z, name: next.name };
+  waypoint = { x: next.x, z: next.z, name: next.name, kind: 'chest' };
   waypointArrow.visible = true;
 }
 
@@ -991,20 +1083,20 @@ document.addEventListener('pointerlockchange', () => {
 
 // --- Panel buttons (delegated) ---
 ui.panelBody.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-close],[data-buy],[data-buyboat],[data-buyhouse],[data-sell],[data-sellpier],[data-haggle],[data-accept],[data-turnin],[data-openshop],[data-restart],[data-hair],[data-shirt],[data-buyskin],[data-skin],[data-jobaccept],[data-jobturnin],[data-claimevent],[data-sellwood]');
+  const t = e.target.closest('[data-close],[data-buy],[data-buyboat],[data-buyhouse],[data-sell],[data-sellpier],[data-haggle],[data-accept],[data-turnin],[data-track],[data-openshop],[data-restart],[data-hair],[data-shirt],[data-buyskin],[data-skin],[data-jobaccept],[data-jobturnin],[data-claimevent],[data-sellwood]');
   if (!t) return;
   if (t.hasAttribute('data-close')) { cancelHaggle(); closePanel(); }
   else if (t.hasAttribute('data-hair')) {
     if (player.hair === t.dataset.hair) { showToast(ui, 'Gaya rambut itu sudah dipakai.'); }
     else if (player.money < 5000) showToast(ui, 'Uang tidak cukup (Rp 5.000).');
-    else { player.money -= 5000; player.hair = t.dataset.hair; applyAppearance(); sfxCoin(audio); showToast(ui, '💇 Gaya rambut baru!'); }
+    else { player.money -= 5000; player.hair = t.dataset.hair; applyAppearance(); sfxCoin(audio); showToast(ui, '💇 Gaya rambut baru!'); saveGame(snapshot()); }
     openSalon();
   }
   else if (t.hasAttribute('data-shirt')) {
     const c = Number(t.dataset.shirt);
     if (player.shirt === c) { showToast(ui, 'Baju itu sudah dipakai.'); }
     else if (player.money < 8000) showToast(ui, 'Uang tidak cukup (Rp 8.000).');
-    else { player.money -= 8000; player.shirt = c; player.skin = null; applyAppearance(); sfxCoin(audio); showToast(ui, '👕 Baju baru!'); }
+    else { player.money -= 8000; player.shirt = c; player.skin = null; applyAppearance(); sfxCoin(audio); showToast(ui, '👕 Baju baru!'); saveGame(snapshot()); }
     openSalon();
   }
   else if (t.hasAttribute('data-buyskin')) {
@@ -1018,6 +1110,7 @@ ui.panelBody.addEventListener('click', (e) => {
       player.skin = s.id; applyAppearance();
       sfxCoin(audio);
       showToast(ui, `👕 Kamu membeli & memakai ${SKIN_DEFS[s.id].name}! Efek: ${SKIN_DEFS[s.id].effect.text}`);
+      saveGame(snapshot()); // autosave (batch 6, item 4): a bought skin survives a closed tab
     }
     openShop();
   }
@@ -1093,12 +1186,12 @@ ui.panelBody.addEventListener('click', (e) => {
   } else if (t.hasAttribute('data-buy')) {
     const msg = buyItem(player, t.dataset.buy);
     showToast(ui, msg);
-    if (msg.startsWith('Berhasil')) sfxCoin(audio);
+    if (msg.startsWith('Berhasil')) { sfxCoin(audio); saveGame(snapshot()); } // autosave (batch 6, item 4)
     openShop();
   } else if (t.hasAttribute('data-buyboat')) {
     const msg = buyBoat(player, t.dataset.buyboat);
     showToast(ui, msg);
-    if (msg.startsWith('Berhasil')) sfxCoin(audio);
+    if (msg.startsWith('Berhasil')) { sfxCoin(audio); saveGame(snapshot()); } // autosave (batch 6, item 4)
     openBoatShop();
   } else if (t.hasAttribute('data-accept')) {
     const m = missions.find((x) => x.id === t.dataset.accept);
@@ -1124,15 +1217,24 @@ ui.panelBody.addEventListener('click', (e) => {
       }
     }
     openNpc(currentNpc);
+  } else if (t.hasAttribute('data-track')) {
+    // "Lacak" a mission (item 5): the arrow points at this mission's target
+    // until it is turned in (trackedMission() then falls back to the chip's).
+    const m = missions.find((x) => x.id === t.dataset.track);
+    if (m && m.status === 'active') {
+      trackedMissionId = m.id;
+      showToast(ui, `📍 Panah menunjuk ke: ${m.title}`);
+    }
+    openMissions();
   }
 });
 
 // --- Minimap click opens the full map; full-map click sets a waypoint (no fast travel). ---
 ui.minimap.addEventListener('click', () => { if (screen === 'play') openMap(); });
 ui.onWaypoint = (place) => {
-  waypoint = { x: place.x, z: place.z, name: place.name };
+  waypoint = { x: place.x, z: place.z, name: place.name, kind: 'manual' };
   waypointArrow.visible = true;
-  showToast(ui, `📍 Tujuan: ${place.name} — ikuti panah emas!`);
+  showToast(ui, `📍 Tujuan: ${place.name} — ikuti panah hitam!`);
   closeMap();
 };
 ui.onCloseMap = () => closeMap();
@@ -1177,18 +1279,89 @@ setupTouch(ui);
 if (IS_TOUCH) document.getElementById('help').textContent = 'Joystick jalan · Geser kamera · AKSI memancing/bicara · 🗺️ peta';
 
 // --- Character name (batch 5, item 4): typed on the title screen, blank → 'Nelayan'. ---
+// Batch 6, item 3: the name is written to localStorage the MOMENT it is typed
+// (small separate key), and the field is prefilled from it on reopen —
+// waiting for a sleep-save meant the name was lost when the tab closed early.
 function readNameInput() {
   const el = document.getElementById('name-input');
   const v = (el.value || '').trim().slice(0, 16);
   return v || 'Nelayan';
 }
-document.getElementById('start-btn').addEventListener('click', () => { player.name = readNameInput(); startGame(); });
+function storeNameInput() {
+  const el = document.getElementById('name-input');
+  writePlayerName(el ? el.value : '');
+}
+document.getElementById('name-input').addEventListener('input', storeNameInput);
+document.getElementById('start-btn').addEventListener('click', () => { storeNameInput(); player.name = readNameInput(); startGame(); });
 document.getElementById('restart-btn').addEventListener('click', resetGame);
 
 // --- Settings popup (title screen): full control list, closable. ---
+// (Restored batch 6: these three handlers were lost from the Pages copy in
+// an earlier batch — without them the ⚙️ Pengaturan button was dead and the
+// backup-code buttons in the popup were unreachable.)
 document.getElementById('settings-btn').addEventListener('click', () => { document.getElementById('settings-popup').style.display = 'flex'; });
 document.getElementById('settings-close').addEventListener('click', () => { document.getElementById('settings-popup').style.display = 'none'; });
 document.getElementById('settings-popup').addEventListener('click', (e) => { if (e.target.id === 'settings-popup') e.target.style.display = 'none'; });
+
+// --- Save backup code (batch 6, item 4): one text code the player can keep
+// in notes/WA and paste back on any phone/browser to restore everything
+// (name, level, XP, money, skins/items, missions, day). Offline only: the
+// code never leaves the browser except through the clipboard.
+const BACKUP_PREFIX = 'EREKE1.';
+function encodeSaveCode(state) {
+  return BACKUP_PREFIX + btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+}
+function decodeSaveCode(code) {
+  const raw = (code || '').trim();
+  if (!raw.startsWith(BACKUP_PREFIX)) throw new Error('prefix');
+  const s = JSON.parse(decodeURIComponent(escape(atob(raw.slice(BACKUP_PREFIX.length)))));
+  if (!s || typeof s !== 'object' || typeof s.money !== 'number' || typeof s.day !== 'number' || !Array.isArray(s.missions)) throw new Error('shape');
+  return s;
+}
+function backupStatus(msg, ok) {
+  const el = document.getElementById('backup-status');
+  if (el) { el.textContent = msg; el.style.color = ok ? '#a9e5a0' : '#ff8a80'; }
+}
+document.getElementById('backup-copy').addEventListener('click', async () => {
+  const s = loadGame();
+  if (!s) { backupStatus('❌ Belum ada save — main dan tidur dulu sekali untuk menyimpan, baru salin kodenya.', false); return; }
+  const code = encodeSaveCode(s);
+  let copied = false;
+  try { await navigator.clipboard.writeText(code); copied = true; }
+  catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = code; document.body.appendChild(ta); ta.select();
+      copied = document.execCommand('copy'); ta.remove();
+    } catch { copied = false; }
+  }
+  if (copied) { backupStatus('✅ Kode save disalin — simpan di catatan/WA kamu.', true); showToast(ui, '📋 Kode save disalin — simpan di catatan/WA kamu'); }
+  else backupStatus('❌ Gagal menyalin otomatis — salin manual: ' + code, false);
+});
+document.getElementById('backup-paste-btn').addEventListener('click', () => {
+  const box = document.getElementById('backup-paste-box');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block') document.getElementById('backup-code-input').focus();
+});
+// Eye toggle for the paste box (item 4): the code is hidden by default (dots,
+// like a password field); tap 👁️ to show it, tap again (🙈) to hide it. The
+// masking is visual only (CSS class) — the value is never touched, so
+// toggling cannot delete or change the pasted code.
+document.getElementById('backup-eye').addEventListener('click', () => {
+  const input = document.getElementById('backup-code-input');
+  const masked = input.classList.toggle('masked');
+  document.getElementById('backup-eye').textContent = masked ? '👁️' : '🙈';
+});
+document.getElementById('backup-restore').addEventListener('click', () => {
+  const raw = document.getElementById('backup-code-input').value;
+  let s;
+  try { s = decodeSaveCode(raw); }
+  catch { backupStatus('❌ Kode tidak valid — periksa lagi kodenya (harus diawali EREKE1. dan lengkap, jangan ada yang terpotong).', false); return; }
+  saveGame(s);
+  writePlayerName(s.name || '');
+  backupStatus(`✅ Save dipulihkan — ${s.name || 'Nelayan'}, Hari ${s.day}, Level ${levelFromXp(s.xp || 0)}. Memuat ulang…`, true);
+  setTimeout(() => window.location.reload(), 900);
+});
 
 // Sleep-choice modal buttons (item 11): the player always chooses.
 document.getElementById('sleep-modal-sleep').addEventListener('click', () => closeSleepModal('sleep'));
@@ -1204,18 +1377,25 @@ if (existingSave) {
   cb.textContent = `↻ Lanjutkan — Hari ${existingSave.day}, ${fmtRp(existingSave.money)}, Ikan ${Object.keys(existingSave.caught || {}).length}/12`;
   // Old saves have no name: prefill the field when the save has one, and
   // always take the field's value on continue (blank → 'Nelayan', then saved).
+  // Batch 6, item 3: the name typed most recently (stored on every keystroke)
+  // wins over the save's name, and it prefills the field even with no save.
   document.getElementById('name-input').value = existingSave.name || '';
   cb.addEventListener('click', () => {
     applySave(existingSave);
+    storeNameInput();
     player.name = readNameInput();
     startGame();
     showToast(ui, `💾 Save dimuat — selamat datang kembali di Ereke, Hari ${clock.day}!`);
   });
   document.getElementById('start-btn').textContent = '▶ Permainan Baru';
 }
+// Prefill the name field from the last typed name (batch 6, item 3): the
+// stored name wins over the save's name, so Bang never retypes it.
+const storedName = readPlayerName();
+if (storedName) document.getElementById('name-input').value = storedName;
 
 // Debug/testing handle (read-only state for playtests; the game never reads it).
-window.__ereke = { player, clock, missions, jobs, fishing, world, eventState, evt, get screen() { return screen; }, startGame, doAction, gainXp, levelFromXp, levelTitle, maybeRevealChest, openEvents, openProfile, openSalon };
+window.__ereke = { player, clock, missions, jobs, fishing, world, eventState, evt, get screen() { return screen; }, get arrowState() { const s = currentArrowState(); return s && { ...s, arrowHex: waypointArrow.material.color.getHex(), arrowVisible: waypointArrow.visible }; }, startGame, doAction, gainXp, levelFromXp, levelTitle, maybeRevealChest, openEvents, openProfile, openSalon };
 
 // --- Night lights: a warm torch glow around the player and a focused
 // flashlight beam forward, both only at night and only while held. The
@@ -1519,25 +1699,49 @@ function frame() {
     const top = Math.round(ui.hud.getBoundingClientRect().bottom) + 6;
     if (mt._chipTop !== top) { mt._chipTop = top; mt.style.top = `${top}px`; }
   }
+  // Waypoint chip (batch 6, item 5): it is now always visible during play
+  // (it shows the tracked mission's target), so — like the mission chip —
+  // its top is measured, not hard-coded: directly under the mission chip.
+  // The CSS tops (52px / 232px portrait / 108px landscape) are only the
+  // pre-JS fallback. This keeps the two chips stacked cleanly at any level
+  // (the HUD grows with level) and out of the portrait centre zone.
+  const wchipEl = document.getElementById('waypoint-chip');
+  if (wchipEl && mt) {
+    const wtop = Math.round(mt.getBoundingClientRect().bottom) + 6;
+    if (wchipEl._chipTop !== wtop) { wchipEl._chipTop = wtop; wchipEl.style.top = `${wtop}px`; }
+  }
   updateNameTag(); // floating name + rank title above the head (batch 5, item 4)
-  drawMinimap(ui, player, visited, PLACES, waypoint);
-  updatePlaceLabels(world, player);
-  // 3D waypoint arrow above the player + compass chip with live distance.
-  const wchip = document.getElementById('waypoint-chip');
-  if (waypoint) {
-    const d = Math.hypot(waypoint.x - player.x, waypoint.z - player.z);
+  // 3D waypoint arrow above the player + compass chip with live distance
+  // (batch 6, item 5): colour follows Bang's mapping — red attack > black
+  // manual marker > mission (yellow main / blue side / green ready to claim).
+  let target = currentArrowState();
+  // Arriving at a manual/chest waypoint clears it; the arrow then falls back
+  // to the tracked mission (recomputed below).
+  if (target && (target.kind === 'manual' || target.kind === 'chest')) {
+    const d = Math.hypot(target.x - player.x, target.z - player.z);
     if (d < 7) {
-      showToast(ui, `📍 Sampai di ${waypoint.name}!`);
-      waypoint = null; waypointArrow.visible = false;
-      wchip.style.display = 'none';
-    } else {
-      waypointArrow.visible = screen === 'play';
-      const gy = player.mesh.position.y;
-      waypointArrow.position.set(player.x, gy + 3.6 + Math.sin(elapsed * 2) * 0.25, player.z);
-      waypointArrow.rotation.y = Math.atan2(waypoint.x - player.x, waypoint.z - player.z);
-      wchip.style.display = 'block';
-      wchip.textContent = `📍 ${waypoint.name} · ${Math.round(d)} m`;
+      showToast(ui, `📍 Sampai di ${target.name}!`);
+      waypoint = null;
+      target = currentArrowState();
     }
+  }
+  // The minimap dot follows the same target + colour as the 3D arrow.
+  drawMinimap(ui, player, visited, PLACES, target && { x: target.x, z: target.z, name: target.name, color: ARROW_COLORS[target.state].css });
+  updatePlaceLabels(world, player);
+  const wchip = document.getElementById('waypoint-chip');
+  if (target) {
+    const d = Math.hypot(target.x - player.x, target.z - player.z);
+    const col = ARROW_COLORS[target.state];
+    waypointArrow.material.color.setHex(col.hex);
+    waypointArrow.visible = screen === 'play';
+    const gy = player.mesh.position.y;
+    waypointArrow.position.set(player.x, gy + 3.6 + Math.sin(elapsed * 2) * 0.25, player.z);
+    waypointArrow.rotation.y = Math.atan2(target.x - player.x, target.z - player.z);
+    wchip.style.display = 'block';
+    wchip.textContent = `${target.icon} ${target.name} · ${Math.round(d)} m`;
+    wchip.style.color = col.css;
+    wchip.style.borderColor = col.css;
+    wchip.style.background = col.chipBg || 'rgba(12,24,38,.85)';
   } else { waypointArrow.visible = false; wchip.style.display = 'none'; }
   updateTimers(ui, dt);
   renderer.render(scene, camera);
