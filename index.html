@@ -47,7 +47,8 @@
   .gender-btn { background: rgba(255,255,255,.12); color: #fff; border: 2px solid rgba(255,255,255,.4); border-radius: 12px; padding: 12px 20px; font-size: 17px; font-weight: 800; cursor: pointer; margin: 4px; }
   .gender-btn.selected { background: #f1c40f; color: #1a1a1a; border-color: #fff; }
   #level-pill { cursor: pointer; }
-  #login-popup, #rankup-popup { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
+  #login-popup, #rankup-popup, #settings-popup { position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
+  .settings-body { text-align: left; font-size: 14px; line-height: 1.7; margin: 10px 0 16px; }
   .popup-card { background: #12283d; color: #fff; border: 2px solid #f1c40f; border-radius: 14px; padding: 24px 28px; width: min(520px, 92vw); text-align: center; }
   .popup-card h2 { color: #f1c40f; margin: 0 0 8px; }
   .login-days { display: flex; gap: 6px; justify-content: center; margin: 14px 0; flex-wrap: wrap; }
@@ -63,7 +64,8 @@
   .rar.rare { color: #7fb3ff; } .rar.leg { color: #ffb347; font-weight: 800; }
   .shop-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid rgba(255,255,255,.12); }
   .shop-item b { display: block; } .shop-item small { opacity: .8; }
-  #title-screen, #end-screen { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, rgba(11,30,58,.25), rgba(11,30,58,.85)); }
+  #title-screen, #end-screen { position: fixed; inset: 0; z-index: 30; display: flex; align-items: safe center; justify-content: center; overflow-y: auto; background: linear-gradient(180deg, rgba(11,30,58,.94), rgba(11,30,58,.98)); }
+  .screen-title #hud, .screen-title #minimap, .screen-title #minimap-label, .screen-title #help, .screen-title #touch { display: none !important; }
   .card { text-align: center; color: #fff; max-width: 640px; padding: 30px; }
   .card h1 { font-size: 54px; margin: 0; color: #f1c40f; text-shadow: 0 3px 0 #7a5b00, 0 6px 18px rgba(0,0,0,.6); }
   .card h3 { font-size: 20px; margin: 6px 0 14px; font-weight: 500; opacity: .95; }
@@ -75,7 +77,7 @@
   #joy-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(241,196,15,.9); }
   #action-btn { position: fixed; right: 24px; bottom: 40px; width: 92px; height: 92px; border-radius: 50%; background: #f1c40f; color: #1a1a1a; font-size: 17px; font-weight: 900; border: 3px solid #fff; z-index: 8; }
   #help { position: fixed; bottom: 10px; left: 10px; color: rgba(255,255,255,.75); font-size: 12px; text-shadow: 0 1px 2px #000; z-index: 5; }
-  @media (max-width: 700px) { #minimap { width: 140px; height: 96px; } #minimap-label { top: 110px; } .card h1 { font-size: 38px; } #hud { max-width: 52vw; } .pill { font-size: 12px; padding: 5px 9px; } }
+  @media (max-width: 700px) { #minimap { width: 140px; height: 96px; } #minimap-label { top: 110px; } .card { padding: 16px 14px; } .card h1 { font-size: 32px; } .card h3 { font-size: 16px; margin: 4px 0 8px; } .card p { font-size: 14px; line-height: 1.45; } .card .keys { font-size: 12px; padding: 8px; } .gender-btn { padding: 10px 14px; font-size: 15px; } #hud { max-width: 52vw; } .pill { font-size: 12px; padding: 5px 9px; } }
 </style>
 </head>
 <body>
@@ -113,10 +115,10 @@
   <h1>🌊 BUTUR<br>ADVENTURES</h1>
   <h3>Jelajah Ereke, Buton Utara — Nelayan Legendaris</h3>
   <p>Kamu bangun di <b>Desa Loji Pantai</b>. Laut Banda memanggil. Dalam <b>7 hari</b>, tangkap <b>12 spesies ikan</b> — dari Kembung sampai Pari Emas — jual di <b>Pasar Ereke</b>, beli joran dan perahu, dan bantu warga desa. Jadilah <b>Nelayan Legendaris Ereke</b>!</p>
-  <p class="keys">🎮 <b>WASD</b> jalan &nbsp;·&nbsp; <b>Mouse</b> putar kamera (klik untuk kunci) &nbsp;·&nbsp; <b>F</b> memancing &nbsp;·&nbsp; <b>Spasi</b> tarik saat zona hijau &nbsp;·&nbsp; <b>E</b> bicara / naik motor &amp; mobil &nbsp;·&nbsp; <b>M</b> peta besar (tandai tujuan) &nbsp;·&nbsp; <b>C</b> buku ikan &nbsp;·&nbsp; <b>V</b> misi &nbsp;·&nbsp; <b>T</b> tidur &nbsp;·&nbsp; <b>B</b> naik/turun perahu &nbsp;·&nbsp; <b>Esc</b> jeda &nbsp;·&nbsp; <b>N</b> suara<br>📱 Di HP: joystick kiri untuk jalan, geser kanan untuk kamera, tombol AKSI untuk memancing, tombol 🗺️ untuk peta.</p>
   <p>👤 <b>Pilih karaktermu:</b></p>
   <p><button class="gender-btn selected" data-gender="cowo">👦 Cowo</button> <button class="gender-btn" data-gender="cewe">👧 Cewe</button></p>
   <button class="btn" id="start-btn">▶ Mulai Bermain</button>
+  <button class="btn ghost" id="settings-btn">⚙️ Pengaturan</button>
   <button class="btn ghost" id="continue-btn" style="display:none">↻ Lanjutkan</button>
   <p id="best-line" style="font-size:14px"></p>
 </div></div>
@@ -136,6 +138,11 @@
   <h2>🎉 SELAMAT!</h2>
   <p id="rankup-text"></p>
   <button class="btn" id="rankup-close">Lanjutkan</button>
+</div></div>
+<div id="settings-popup"><div class="popup-card">
+  <h2>⚙️ Pengaturan — Kontrol</h2>
+  <div class="settings-body">🎮 <b>WASD</b> jalan &nbsp;·&nbsp; <b>Mouse</b> putar kamera (klik untuk kunci) &nbsp;·&nbsp; <b>F</b> memancing &nbsp;·&nbsp; <b>Spasi</b> tarik saat zona hijau &nbsp;·&nbsp; <b>E</b> bicara / naik motor &amp; mobil &nbsp;·&nbsp; <b>M</b> peta besar (tandai tujuan) &nbsp;·&nbsp; <b>C</b> buku ikan &nbsp;·&nbsp; <b>V</b> misi &nbsp;·&nbsp; <b>T</b> tidur &nbsp;·&nbsp; <b>B</b> naik/turun perahu &nbsp;·&nbsp; <b>Esc</b> jeda &nbsp;·&nbsp; <b>N</b> suara<br><br>📱 Di HP: joystick kiri untuk jalan, geser kanan untuk kamera, tombol AKSI untuk memancing, tombol 🗺️ untuk peta.</div>
+  <button class="btn" id="settings-close">Tutup</button>
 </div></div>
 <div id="touch">
   <div id="joy"><div id="joy-knob"></div></div>
