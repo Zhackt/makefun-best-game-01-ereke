@@ -38,12 +38,15 @@ export function applyDayNight(lights, minutes) {
   const dayFrac = (minutes - DAY_START_MIN) / (DAY_END_MIN - DAY_START_MIN);
   const ang = Math.PI * (0.15 + dayFrac * 0.7);
   lights.sun.position.set(Math.cos(ang) * 120, Math.sin(ang) * 120 + 10, 40);
-  lights.sun.intensity = 0.3 + d * 2.0;
-  lights.hemi.intensity = 0.25 + d * 0.7;
-  lights.moon.intensity = night ? 0.5 : 0;
+  // Night is REALLY dark now: the sun is below the horizon (almost no
+  // direct light), the hemisphere is a faint blue, and only the moon gives
+  // a dim glow — village lamps, the torch and the flashlight matter.
+  lights.sun.intensity = night ? 0.05 : 0.3 + d * 2.0;
+  lights.hemi.intensity = night ? 0.12 : 0.25 + d * 0.7;
+  lights.moon.intensity = night ? 0.35 : 0;
   const sky = lights.scene.background;
   if (sunset) sky.set(0xff9a56);
-  else if (night) sky.set(0x0b1e3a);
+  else if (night) sky.set(0x081426);
   else sky.set(0x87ceeb);
   lights.scene.fog.color.copy(sky);
 }

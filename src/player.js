@@ -31,12 +31,42 @@ export function createPlayer() {
     xp: 0, fragments: 0, rareBait: 0, daysPlayed: 0, chestsFound: 0, coconuts: 0, gather: { wood: 0, fruit: 0, mushroom: 0 },
     titles: [], skins: [], skin: null, shopSkins: [], motoPaint: null, boatPaint: null, outfit: 'default', defeated: {},
     fish: {}, caught: {}, moving: false, walkPhase: 0,
+    held: 'rod', // what the character holds: rod | hand | pisau | pedang | obor | kayu | senter
+    vy: 0, airY: 0, // jump: vertical velocity + height above the ground
+    _lastStep: 0, // walk-phase index of the last footstep sound played
   };
 }
 
-export function placePlayer(p, x, z) {
-  p.x = x; p.z = z;
-  p.mesh.position.set(x, groundHeight(x, z), z);
+export function placePlayer(p, x, z, colliders, walkways) {
+  // Collision-aware (16 Nov): a teleport must never drop the player inside a
+  // solid box — houses are solid AABBs with no door, so a player placed in one
+  // can never walk out (blockedAt rejects every step). If the target is
+  // blocked, land on the nearest free spot instead (spiral, up to ~5 units).
+  // Callers that do not pass colliders get the old behaviour (title shots).
+  let px = x; let pz = z;
+  if (colliders) {
+    const s = findFreeSpot(x, z, p.onBoat, colliders, walkways || p.walkways);
+    px = s.x; pz = s.z;
+  }
+  p.x = px; p.z = pz;
+  p.airY = 0; p.vy = 0; // teleports and mounts always land the player
+  p.mesh.position.set(px, groundHeight(px, pz), pz);
+}
+
+/** Nearest point to (x,z) that is not blocked: the point itself, else an
+    expanding ring search (12 directions per ring, radii 0.8..maxR). Returns
+    the original point if nothing free is found nearby. */
+export function findFreeSpot(x, z, onBoat, colliders, walkways, maxR = 5) {
+  if (!blockedAt(x, z, onBoat, colliders, walkways)) return { x, z };
+  for (let r = 0.8; r <= maxR; r += 0.8) {
+    for (let i = 0; i < 12; i += 1) {
+      const a = (i / 12) * Math.PI * 2 + r; // rotate each ring a little
+      const nx = x + Math.cos(a) * r;
+      const nz = z + Math.sin(a) * r;
+      if (!blockedAt(nx, nz, onBoat, colliders, walkways)) return { x: nx, z: nz };
+    }
+  }
+  return { x, z };
 }
 
 export function walkwayAt(x, z, walkways) {
@@ -54,7 +84,7 @@ export function surfaceY(x, z, onBoat, walkways) {
   return w ? w.y : groundHeight(x, z);
 }
 
-function blockedAt(x, z, onBoat, colliders, walkways) {
+export function blockedAt(x, z, onBoat, colliders, walkways) {
   if (walkwayAt(x, z, walkways)) return false; // decks are walkable, even over water
   if (x < WORLD.minX + 2 || x > WORLD.maxX - 2 || z < WORLD.minZ + 2 || z > WORLD.maxZ - 2) return true;
   if (!onBoat && x > SEA_X - 4) return true; // sea is for boats only
@@ -94,6 +124,13 @@ export function updatePlayer(p, keys, dt, colliders) {
     p.walkPhase += dt * 9;
     if (!p.riding && Math.floor(p.walkPhase) % 60 === 0 && p.energy > 0) p.energy = Math.max(0, p.energy - 0.05);
   }
+  // Jump: vertical velocity + gravity, on foot only (never on a vehicle/boat).
+  if (p.riding || p.onBoat) { p.airY = 0; p.vy = 0; }
+  else if (p.airY > 0 || p.vy > 0) {
+    p.vy -= 30 * dt;
+    p.airY += p.vy * dt;
+    if (p.airY <= 0) { p.airY = 0; p.vy = 0; }
+  }
   const gy = surfaceY(p.x, p.z, p.onBoat, p.walkways);
   if (p.riding && p.vehicle) {
     // The vehicle carries the player: sync the vehicle mesh, sit the rider on it.
@@ -110,8 +147,8 @@ export function updatePlayer(p, keys, dt, colliders) {
   p.mesh.visible = true;
   p.mesh.position.set(p.x, gy, p.z);
   p.mesh.rotation.y = p.yaw;
-  // Simple walk bob + leg swing.
-  p.mesh.position.y = gy + (p.moving ? Math.abs(Math.sin(p.walkPhase)) * 0.12 : 0);
+  // Simple walk bob + leg swing, plus the jump height above the ground.
+  p.mesh.position.y = gy + p.airY + (p.moving ? Math.abs(Math.sin(p.walkPhase)) * 0.12 : 0);
   const legL = p.mesh.getObjectByName('legL'); const legR = p.mesh.getObjectByName('legR');
   if (legL && legR) {
     legL.rotation.x = p.moving ? Math.sin(p.walkPhase) * 0.6 : 0;

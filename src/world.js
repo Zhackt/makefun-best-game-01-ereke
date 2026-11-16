@@ -2,8 +2,14 @@
 // fort, lake, palms, boats. Also owns collision boxes and the ground-height function.
 import * as THREE from '../vendor/three.module.min.js';
 import { WORLD, SEA_X, PLACES, TREASURE_CHESTS, MONSTERS } from './data.js';
+import { IS_TOUCH } from './ui.js';
 
 export const LAKE = { x: -118, z: 82, r: 34 };
+// Water levels (measured from groundHeight): the lake sits at its low east
+// shore, where the player fishes (rim ~1.0–1.4 there); the Bone river runs
+// in a shallow channel whose bed is carved in groundHeight below.
+export const LAKE_WATER_Y = 1.5;
+export const RIVER_WATER_Y = 0.1;
 
 let seed = 987654321;
 function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
@@ -11,19 +17,56 @@ function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 42949
 /** Gentle hills inland (west), flat coast. Deterministic, no noise library needed. */
 export function groundHeight(x, z) {
   // Bukit Lamoliandu: a flat-topped mesa (height 20) carrying Stadion Lamoliandu.
+  // (No early return here: the flat pads below must win over the mesa, e.g.
+  // the takraw court's north-east corner sits inside the mesa circle.)
   const dh = Math.hypot(x + 185, z + 60);
-  if (dh < 28) return 20;
-  let h = 0;
-  if (x < -60) h += (-60 - x) * 0.055;
-  h += Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.05) * 1.1;
-  h += Math.sin(x * 0.11) * Math.sin(z * 0.09 + 2.0) * 0.35;
-  // Gunung Butur: a climbable cone peak in the far west (hiking trail to the summit).
-  const dm = Math.hypot(x + 205, z - 115);
-  if (dm < 45) h = Math.max(h, 32 * (1 - dm / 45));
-  if (dh < 60) h += (20 - h) * ((60 - dh) / 32); // blend the mesa skirt up to the plateau
-  if (x > 150) h = Math.max(h, 0) * 0.2; // beach stays flat
-  const dl = Math.hypot(x - LAKE.x, z - LAKE.z);
-  if (dl < LAKE.r + 6) h -= Math.max(0, (LAKE.r + 6 - dl)) * 0.12;
+  let h;
+  if (dh < 28) h = 20;
+  else {
+    h = 0;
+    if (x < -60) h += (-60 - x) * 0.055;
+    h += Math.sin(x * 0.045 + 1.3) * Math.cos(z * 0.05) * 1.1;
+    h += Math.sin(x * 0.11) * Math.sin(z * 0.09 + 2.0) * 0.35;
+    // Gunung Butur: a climbable cone peak in the far west (hiking trail to the summit).
+    const dm = Math.hypot(x + 205, z - 115);
+    if (dm < 45) h = Math.max(h, 32 * (1 - dm / 45));
+    if (dh < 60) h += (20 - h) * ((60 - dh) / 32); // blend the mesa skirt up to the plateau
+    if (x > 150) h = Math.max(h, 0) * 0.2; // beach stays flat
+    const dl = Math.hypot(x - LAKE.x, z - LAKE.z);
+    if (dl < LAKE.r + 6) h -= Math.max(0, (LAKE.r + 6 - dl)) * 0.12;
+    // River channel under Jembatan Kayu Bone (z≈150, x 95..175) and the inlet
+    // under Jembatan Lasora (z≈-140, x 146..198): a shallow V bed so the water
+    // plane sits below the banks instead of floating over them.
+    const dr = Math.abs(z - 150);
+    if (x > 95 && x < 175 && dr < 8) h = Math.min(h, -0.4 + dr * 0.12);
+    const di = Math.abs(z + 140);
+    if (x > 146 && x < 198 && di < 8) h = Math.min(h, -0.4 + di * 0.12);
+    // Lake bed: cap the terrain inside the lake below the waterline, so no
+    // hill shoulder pokes through the water disc.
+    if (dl < LAKE.r) h = Math.min(h, LAKE_WATER_Y - 0.5);
+  }
+  // Flat pads under big buildings on the mesa slope (GOR, courts, forts):
+  // a wide building on a slope floats on its downhill side and buries its
+  // uphill side, so the terrain under each footprint is levelled to the
+  // building's own height, with a 3-unit feather blending into the hill.
+  // Pad heights are the measured groundHeight at each building's centre.
+  const PADS = [
+    { x0: -141, z0: -27, x1: -115, z1: -9, h: 4.27 }, // GOR (new spot)
+    { x0: -166, z0: -35, x1: -150, z1: -25, h: 14.28 }, // basketball court
+    { x0: -218, z0: -43.5, x1: -206, z1: -36.5, h: 17.98 }, // takraw court
+    { x0: -150, z0: -89, x1: -130, z1: -71, h: 9.12 }, // Fort Kalisusu
+    { x0: -127, z0: -105.5, x1: -113, z1: -94.5, h: 3.69 }, // Benteng Lipu
+  ];
+  for (const p of PADS) {
+    const dx = Math.max(p.x0 - x, 0, x - p.x1);
+    const dz = Math.max(p.z0 - z, 0, z - p.z1);
+    const d = Math.hypot(dx, dz); // 0 inside the rect, growing outside it
+    if (d < 3) {
+      const t = 1 - d / 3;
+      const s = t * t * (3 - 2 * t); // smoothstep feather
+      h = h + (p.h - h) * s;
+    }
+  }
   return h;
 }
 
@@ -121,6 +164,64 @@ export function makeLabel(text, scale = 1) {
   return spr;
 }
 
+/** Village welcome sign: wooden posts + brown board with a light paper
+  panel, and the village name as a floating label above it (same pattern as
+  the race start sign). No collider — it stands just off the road edge. */
+export function makeWelcomeSign(text) {
+  const g = new THREE.Group();
+  const postGeo = new THREE.CylinderGeometry(0.18, 0.24, 3.6, 6);
+  const postMat = mat(0x6d4c41);
+  const p1 = new THREE.Mesh(postGeo, postMat); p1.position.set(-2.5, 1.8, 0); p1.castShadow = true; g.add(p1);
+  const p2 = new THREE.Mesh(postGeo, postMat); p2.position.set(2.5, 1.8, 0); p2.castShadow = true; g.add(p2);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(6.2, 2.4, 0.25), mat(0x8d6e63));
+  panel.position.y = 2.8; panel.castShadow = true; g.add(panel);
+  const paper = new THREE.Mesh(new THREE.BoxGeometry(5.6, 1.8, 0.06), mat(0xfff9c4));
+  paper.position.set(0, 2.8, 0.16); g.add(paper);
+  const label = makeLabel(text, 0.62);
+  label.position.y = 5.6; g.add(label);
+  g.userData.label = label; // the caller may proximity-gate it (placeLabels)
+  return g;
+}
+
+/** Dirt road ribbon: a flat strip that hugs the terrain along a polyline
+  of waypoints. Same dusty colour as the roads drawn on the full map
+  (0xc9a86a). Sits just above the ground so it never z-fights the terrain. */
+export function makeRoad(points, width = 5) {
+  const pts = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const [x1, z1] = points[i]; const [x2, z2] = points[i + 1];
+    const len = Math.hypot(x2 - x1, z2 - z1);
+    const n = Math.max(1, Math.ceil(len / 4));
+    for (let j = 0; j < n; j++) {
+      const t = j / n;
+      pts.push([x1 + (x2 - x1) * t, z1 + (z2 - z1) * t]);
+    }
+  }
+  pts.push(points[points.length - 1]);
+  const hw = width / 2;
+  const verts = []; const idx = [];
+  for (let i = 0; i < pts.length; i++) {
+    const [x, z] = pts[i];
+    const [px, pz] = pts[Math.max(0, i - 1)];
+    const [nx, nz] = pts[Math.min(pts.length - 1, i + 1)];
+    let dx = nx - px; let dz = nz - pz;
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const ox = -dz * hw; const oz = dx * hw;
+    verts.push(x + ox, groundHeight(x + ox, z + oz) + 0.15, z + oz);
+    verts.push(x - ox, groundHeight(x - ox, z - oz) + 0.15, z - oz);
+  }
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 1, side: THREE.DoubleSide }));
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 export function makeMotorbike(color = 0xe74c3c) {
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.5, 0.55), mat(color));
@@ -212,10 +313,54 @@ export function makePlayerMesh(gender, hair, shirtColor, skin = null) {
   return g;
 }
 
+/** Small held-item mesh for the character's right hand (simple boxes only).
+    Returns null for the empty hand. The caller attaches it to the player
+    mesh as 'heldItem' and rebuilds it whenever the held item changes. */
+export function makeHeldMesh(held) {
+  if (!held || held === 'hand') return null;
+  const g = new THREE.Group();
+  const blade = mat(0xbdc3c7); const wood = mat(0x8b6b3d); const dark = mat(0x37474f);
+  if (held === 'rod') {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.6, 0.06), wood);
+    r.position.y = 0.5; r.rotation.z = 0.5; g.add(r);
+  } else if (held === 'pisau') {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.42, 0.02), blade);
+    b.position.y = 0.35; g.add(b);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.16, 0.03), wood);
+    h.position.y = 0.06; g.add(h);
+  } else if (held === 'pedang') {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.95, 0.03), blade);
+    b.position.y = 0.62; g.add(b);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.2, 0.04), wood);
+    h.position.y = 0.05; g.add(h);
+  } else if (held === 'obor') {
+    const s = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.65, 0.08), wood);
+    s.position.y = 0.25; g.add(s);
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.34, 6), new THREE.MeshLambertMaterial({ color: 0xff9800, emissive: 0xff6d00, emissiveIntensity: 1.2 }));
+    f.position.y = 0.75; g.add(f);
+  } else if (held === 'kayu') {
+    const k = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.75, 0.1), wood);
+    k.position.y = 0.3; k.rotation.z = 0.2; g.add(k);
+  } else if (held === 'senter') {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.32, 0.13), dark);
+    b.position.y = 0.2; g.add(b);
+    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.14), new THREE.MeshLambertMaterial({ color: 0xfff9c4, emissive: 0xfff176, emissiveIntensity: 0.8 }));
+    lens.position.y = 0.38; g.add(lens);
+  }
+  g.position.set(0.55, 0.95, 0.12);
+  g.rotation.x = -0.35;
+  return g;
+}
+
 export function buildWorld(scene) {
   const colliders = []; // {minX,maxX,minZ,maxZ}
   const group = new THREE.Group();
   scene.add(group);
+  // Floating labels, proximity-gated: a place's name only shows when the
+  // player is within ~30 units of it, so no village name is readable from
+  // the forest (nearest village Kalibu is 34 away) or from another village.
+  // Declared up here so the BNI label and the welcome-sign labels can join it.
+  const placeLabels = [];
 
   // --- Terrain with vertex colours: sand near sea, grass inland, rock on hills.
   const tw = WORLD.maxX - WORLD.minX; const td = WORLD.maxZ - WORLD.minZ;
@@ -252,10 +397,13 @@ export function buildWorld(scene) {
   group.add(sea);
   const seaBase = seaGeo.attributes.position.array.slice();
 
-  // --- Inland lake.
+  // --- Inland lake. The disc sits at the low east shore's height, and the
+  // bed is capped below it in groundHeight, so the whole r=34 disc reads
+  // as water from the shore (it used to sit at centre height −2.1+0.4 and
+  // was buried under the rim everywhere except a small central puddle).
   const lake = new THREE.Mesh(new THREE.CircleGeometry(LAKE.r, 24), mat(0x2a9db5));
   lake.rotation.x = -Math.PI / 2;
-  lake.position.set(LAKE.x, groundHeight(LAKE.x, LAKE.z) + 0.4, LAKE.z);
+  lake.position.set(LAKE.x, LAKE_WATER_Y, LAKE.z);
   group.add(lake);
 
   // --- Cliffs at Tebing Kampa.
@@ -270,7 +418,7 @@ export function buildWorld(scene) {
   const mroof = new THREE.Mesh(new THREE.ConeGeometry(10, 3, 4), mat(0x8e44ad));
   mroof.position.y = 5.5; mroof.rotation.y = Math.PI / 4; mroof.castShadow = true;
   market.add(mroof);
-  market.position.set(0, groundHeight(0, 28), 28);
+  market.position.set(0, groundHeight(0, 28) - 0.5, 28); // -0.5: terrain varies ~0.9 under the hall, so its base floated ~0.5 on the low side
   group.add(market);
   colliders.push({ minX: -7, maxX: 7, minZ: 23, maxZ: 33 });
 
@@ -315,6 +463,7 @@ export function buildWorld(scene) {
   const bniLabel = makeLabel('BNI Ereke', 0.85);
   bniLabel.position.set(-14, groundHeight(-14, 10) + 9, 10);
   group.add(bniLabel);
+  placeLabels.push({ sprite: bniLabel, x: -14, z: 10, range: 30 });
 
   // --- Buyable houses + rented room (save points).
   const erekeHouse = makeHouse(7, 6, 0x9b59b6, 0x34495e);
@@ -409,22 +558,34 @@ export function buildWorld(scene) {
   // roads between villages): in the real map houses stand along the roads,
   // not only in village centres. Kept just off the road edges so the road,
   // bridges and landmarks stay clear.
+  // VILLAGE IDENTITY RULE (Bang, 16 Nov): houses stay in SHORT stretches
+  // right next to a village — the stretches BETWEEN villages are left EMPTY
+  // on purpose, so walking/driving from one village to the next you cross
+  // open land and can tell where one village ends and the next begins.
+  // (The mid-gap houses that used to blur the boundaries were removed.)
   const roadsideHouses = [
-    // Coast road (Jalan Poros, x = 155), west / inland side.
-    [144, -160], [144, -124], [144, -112], [144, -70], [144, -52], [144, -34],
-    [144, -16], [144, 2], [144, 20], [144, 56], [144, 66], [144, 100], [144, 118],
+    // Coast road (Jalan Poros, x = 155), west / inland side — short stretches
+    // next to Membuku (-110), Kampa (-62), Mowuru (-12), Lipu (42),
+    // Bonelipu (80) and Malalanda (112). Empty between them.
+    [144, -124], [144, -112], [144, -70], [144, -52], [144, -16], [144, 2],
+    [144, 56], [144, 66], [144, 100], [144, 118],
     // Coast road, east / beach side (clear of fishing markers + pier).
-    [163, -70], [163, 20], [163, 80],
-    // Ereke -> Loji Pantai.
-    [23, 30], [38, 39], [52, 44],
-    // Ereke -> Lokonea.
-    [0, 7], [-14, -24], [-24, -46],
-    // Ereke -> Kalibu.
-    [-10, 60], [-26, 83], [-41, 107],
-    // Ereke -> Kadacua (west road).
-    [-50, 12], [-90, 30], [-130, 12],
-    // Kalibu -> Lemo Ea, Linsowu -> Mowuru, Malalanda -> Jembatan Kayu Bone.
-    [-52, 132], [136, -26], [134, 140],
+    [163, -70], [163, 80],
+    // Ereke -> Loji Pantai: one house at each village's edge, open land between.
+    // (The Loji-edge house sits at (48,48): the road to Loji runs just
+    // south of it, so it had to move a few steps from (52,44).)
+    [23, 30], [48, 48],
+    // Ereke -> Lokonea: same — edges only.
+    [0, 7], [-24, -46],
+    // Ereke -> Kalibu: edges only. (The Kalibu-edge house sits at (-38,100):
+    // the road to Kalibu runs just east of it, so it moved from (-41,107).)
+    [-10, 60], [-38, 100],
+    // Ereke -> Kadacua (west road): only the Kadacua edge; the long stretch
+    // from Ereke is open land.
+    [-130, 12],
+    // Malalanda -> Jembatan Kayu Bone (village edge only). (Moved from
+    // (134,140): the road to the bridge runs right through that spot.)
+    [128, 144],
   ];
   const rColors = [[0xf1c40f, 0x2980b9], [0xecf0f1, 0xe74c3c], [0xf39c12, 0x27ae60], [0x9b59b6, 0x34495e], [0xfdffb6, 0x16a085]];
   roadsideHouses.forEach(([hx, hz], i) => {
@@ -435,6 +596,76 @@ export function buildWorld(scene) {
     group.add(h);
     colliders.push({ minX: hx - 2.5, maxX: hx + 2.5, minZ: hz - 2.2, maxZ: hz + 2.2 });
   });
+
+  // --- Village welcome signs: one at each village's road entrance, facing
+  // the incoming road, so the player can tell "this is Desa Loji, this is
+  // Desa Bangkudu". [x, z, rotationY, text]. Signs stand just off the road
+  // edge and have NO collider, so they can never block the road.
+  const welcomeSigns = [
+    [47, 53, -2.09, 'Selamat Datang di Desa Loji Pantai'],
+    [12, 40, 1.05, 'Selamat Datang di Kota Ereke'],
+    [138, 44, -1.57, 'Selamat Datang di Pelabuhan Lipu'],
+    [-30, -42, 0.31, 'Selamat Datang di Kelurahan Lokonea'],
+    [136, -28, 1.57, 'Selamat Datang di Desa Linsowu'],
+    [140, 128, 1.57, 'Selamat Datang di Desa Malalanda'],
+    [-44, 120, 2.64, 'Selamat Datang di Desa Kalibu'],
+    [-140, 12, 1.57, 'Selamat Datang di Desa Kadacua'],
+    [-162, -110, 1.57, 'Selamat Datang di Desa Laangke'],
+    [-84, -128, 1.57, 'Selamat Datang di Desa Lantagi'],
+    [-48, 130, -2.26, 'Selamat Datang di Desa Lemo Ea'],
+    [38, -112, 3.14, 'Selamat Datang di Desa Rombo'],
+    [-182, 58, 1.57, 'Selamat Datang di Desa Tomoahi'],
+    [82, -138, -1.57, 'Selamat Datang di Desa Wasalabose'],
+    [-122, 138, 1.57, 'Selamat Datang di Desa Eelahaji'],
+    [44, 148, -1.57, 'Selamat Datang di Desa Jampaka'],
+    [30, -72, 3.14, 'Selamat Datang di Kelurahan Lemo'],
+    [150, 72, 3.14, 'Selamat Datang di Kelurahan Bonelipu'],
+  ];
+  for (const [sx, sz, rotY, text] of welcomeSigns) {
+    const sign = makeWelcomeSign(text);
+    sign.position.set(sx, groundHeight(sx, sz), sz);
+    sign.rotation.y = rotY;
+    group.add(sign);
+    // The sign's floating name is proximity-gated like the village labels,
+    // so it never reads as a village name from far away (e.g. from the forest).
+    placeLabels.push({ sprite: sign.userData.label, x: sx, z: sz, range: 30 });
+  }
+
+  // --- Danger warning board at the Hutan Loji entrance (east side, from
+  // Kalibu): same sign style, no collider, never blocks the road. Its
+  // label stays visible — it IS the forest's own warning.
+  const dangerBoard = makeWelcomeSign('⚠️ HUTAN BERBAHAYA — Monster Lv5–50');
+  dangerBoard.position.set(-66, groundHeight(-66, 128), 128);
+  dangerBoard.rotation.y = 1.57; // faces east, toward the incoming road
+  group.add(dangerBoard);
+
+  // --- Dirt roads between the villages (Jalan Raya) ------------------------
+  // Visible ribbons linking village edge to village edge, so the player can
+  // SEE the road they travel on. Every route was clearance-checked against
+  // all building colliders (min 3.0 units from any wall). The coast road
+  // (Jalan Poros, x = 155) is split around the two bridges — the bridge
+  // decks ARE the road there.
+  const ROADS = [
+    // Ereke <-> Loji Pantai.
+    [[12, 34], [34, 39], [54, 40], [56, 44]],
+    // Ereke <-> Lokonea.
+    [[-24, 20], [-30, -8], [-34, -38], [-36, -44]],
+    // Ereke <-> Kalibu.
+    [[-2, 58], [-5, 66], [-36, 110], [-48, 116]],
+    // Ereke <-> Kadacua (west road).
+    [[-18, 22], [-60, 18], [-100, 24], [-130, 20], [-148, 20]],
+    // Kalibu <-> Lemo Ea.
+    [[-58, 132], [-50, 142]],
+    // Linsowu <-> Mowuru (meets the coast road).
+    [[134, -34], [152, -20]],
+    // Malalanda <-> Jembatan Kayu Bone.
+    [[134, 134], [150, 148]],
+    // Jalan Poros / coast road (split at Jembatan Lasora + Jembatan Kayu Bone).
+    [[155, -165], [155, -144]],
+    [[155, -136], [155, 138]],
+    [[155, 162], [155, 165]],
+  ];
+  for (const road of ROADS) group.add(makeRoad(road));
 
   // --- RSUD Buton Utara (Jl. Poros Kalibu, Desa Loji): white block, red cross.
   const rsud = new THREE.Group();
@@ -528,7 +759,7 @@ export function buildWorld(scene) {
   // small boats below, people searching for pokea shellfish.
   const river = new THREE.Mesh(new THREE.PlaneGeometry(80, 9), mat(0x2a9db5));
   river.rotation.x = -Math.PI / 2;
-  river.position.set(135, 0.45, 150);
+  river.position.set(135, RIVER_WATER_Y, 150);
   group.add(river);
   const bone = new THREE.Group();
   for (let i = 0; i < 22; i += 1) {
@@ -549,18 +780,18 @@ export function buildWorld(scene) {
     }
   }
   group.add(bone);
-  const rb1 = makeBoat(0x8b5a2b); rb1.position.set(164, 0.5, 148); rb1.rotation.y = 1.4; rb1.scale.setScalar(0.8); group.add(rb1);
-  const rb2 = makeBoat(0xc0392b); rb2.position.set(162, 0.5, 154); rb2.rotation.y = -1.2; rb2.scale.setScalar(0.8); group.add(rb2);
+  const rb1 = makeBoat(0x8b5a2b); rb1.position.set(164, RIVER_WATER_Y + 0.05, 148); rb1.rotation.y = 1.4; rb1.scale.setScalar(0.8); group.add(rb1);
+  const rb2 = makeBoat(0xc0392b); rb2.position.set(162, RIVER_WATER_Y + 0.05, 154); rb2.rotation.y = -1.2; rb2.scale.setScalar(0.8); group.add(rb2);
   [[142, 148, 0x8e44ad], [144, 152, 0x16a085]].forEach(([px, pz, shirt]) => {
     const person = makePersonMesh(shirt);
-    person.position.set(px, 0.5, pz);
+    person.position.set(px, RIVER_WATER_Y - 0.4, pz); // wading in the shallows
     group.add(person);
   });
 
   // 3) Jembatan Lasora: concrete road bridge near Pelabuhan Lasora, Teluk Koro.
   const inlet = new THREE.Mesh(new THREE.PlaneGeometry(52, 10), mat(0x2a9db5));
   inlet.rotation.x = -Math.PI / 2;
-  inlet.position.set(172, 0.45, -140);
+  inlet.position.set(172, RIVER_WATER_Y, -140);
   group.add(inlet);
   const lasora = new THREE.Group();
   const ldeck = new THREE.Mesh(new THREE.BoxGeometry(48, 0.7, 6), mat(0xb8bec2));
@@ -644,6 +875,12 @@ export function buildWorld(scene) {
   group.add(gateBeam);
 
   // --- GOR Bukit Lamoliandu: big indoor sports hall (badminton, Piala Lamoliandu).
+  // Moved 16 Nov from (-148,-62): its old spot sat across the mesa slope
+  // (terrain 20 west, ~8 east) so the hall floated ~8 units on its east side
+  // and nearly touched the stadium stands (west edge -161 vs stands -162).
+  // New spot (-128,-18) is open ground south-east of the stadium, ~21 units
+  // from the stands, clear of the hill road, the basketball court and the
+  // roadside house at (-130,12); a flat pad in groundHeight levels it.
   const gor = new THREE.Group();
   box(26, 8, 18, 0xeaf2f8, 0, 4, 0, gor);
   const gorRoof = new THREE.Mesh(new THREE.CylinderGeometry(9.5, 9.5, 26, 12, 1, false, 0, Math.PI), mat(0x2980b9));
@@ -651,9 +888,9 @@ export function buildWorld(scene) {
   gorRoof.position.y = 8; gorRoof.castShadow = true;
   gor.add(gorRoof);
   box(6, 5, 0.4, 0x2c3e50, 0, 2.5, 9.1, gor, false);
-  gor.position.set(-148, groundHeight(-148, -62), -62);
+  gor.position.set(-128, groundHeight(-128, -18), -18);
   group.add(gor);
-  colliders.push({ minX: -161, maxX: -135, minZ: -71, maxZ: -53 });
+  colliders.push({ minX: -141, maxX: -115, minZ: -27, maxZ: -9 });
 
   // --- Outdoor basketball court + takraw court beside the hall.
   function court(cx, cz, w, d, color, net) {
@@ -722,7 +959,7 @@ export function buildWorld(scene) {
   board.position.y = 3.4; sign.add(board);
   sign.position.set(-110, groundHeight(-110, -56), -56);
   group.add(sign);
-  const signLabel = makeLabel('BALAP MOTOR — tekan E', 0.7);
+  const signLabel = makeLabel(IS_TOUCH ? 'BALAP MOTOR — ketuk AKSI' : 'BALAP MOTOR — tekan E', 0.7);
   signLabel.position.set(-110, groundHeight(-110, -56) + 5.5, -56);
   group.add(signLabel);
   // Dirt path winding up the hill from the lowlands (driveable by bike/car).
@@ -750,11 +987,28 @@ export function buildWorld(scene) {
   ];
 
   // --- Floating labels for every named place (main bigger, extra villages smaller).
+  // VILLAGE IDENTITY (Bang, 16 Nov): a label only shows when the player is
+  // near that place (within 30 units), so the screen is never a wall of
+  // overlapping names and the label you see is the village you are actually
+  // in — and no village name is visible from inside Hutan Loji. Small POIs
+  // (bank, salons, rented room, notice board, buyable houses) follow the
+  // same rule. Worst overlaps are also nudged apart with label offsets
+  // (village coordinates themselves never move).
+  const POI_LABELS = new Set(['bni', 'rumah-ereke', 'rumah-membuku', 'sewa', 'salon-ereke', 'salon-loji', 'papan']);
+  const LABEL_OFFSETS = {
+    lemoea: [8, 6], kalibu: [-6, -8],
+    'salon-loji': [8, 6], 'salon-ereke': [-4, 6],
+    'rumah-membuku': [-8, 6], kalisusu: [6, -6],
+  };
   for (const p of PLACES) {
     if (p.id === 'laut') continue; // the sea needs no label
-    const label = makeLabel(p.name, p.minor ? 0.62 : 0.85);
-    label.position.set(p.x, groundHeight(p.x, p.z) + (p.minor ? 7 : 10), p.z);
+    const isPoi = POI_LABELS.has(p.id);
+    const label = makeLabel(p.name, isPoi ? 0.62 : (p.minor ? 0.62 : 0.85));
+    const [ox, oz] = LABEL_OFFSETS[p.id] || [0, 0];
+    const lx = p.x + ox; const lz = p.z + oz;
+    label.position.set(lx, groundHeight(lx, lz) + (p.minor || isPoi ? 7 : 10), lz);
     group.add(label);
+    placeLabels.push({ sprite: label, x: lx, z: lz, range: 30 });
   }
 
   // --- Shipyard corner at the pier: planks + a boat under construction.
@@ -919,7 +1173,44 @@ export function buildWorld(scene) {
     monsters.push({ ...def, mesh: g, hp: def.hp, maxHp: def.hp, alive: true, attackT: 0 });
   }
 
-  return { group, colliders, sea, seaBase, seaGeo, boats, lostRod, walkways, vehicles, pickups, raceRings, racePoints, raceSign: { x: -110, z: -56 }, salons, board: { x: 2, z: 18 }, coconuts, chests, gather, monsters };
+  // --- Village lamps: poles + a glowing head that only lights up at night.
+  // One shared emissive material for all heads (one toggle for the whole
+  // village), and a real PointLight at just TWO main squares (Ereke + Loji)
+  // so a phone never carries dozens of lights. Lamps stand off the road
+  // and have no collider, like the welcome signs.
+  const lampHeadMat = new THREE.MeshLambertMaterial({ color: 0xfff2c0, emissive: 0xffc46b, emissiveIntensity: 0 });
+  // Lamp spots: open ground near each village centre, CLEAR of buildings,
+  // signs, houses and roads (checked against the colliders + sign spots —
+  // the old spots sat inside the market, the BNI, a house and on top of
+  // several welcome signs, so their heads and the square lights were hidden).
+  const lampSpots = [
+    [0, 38], [16, 44], [-24, 16], [-8, 40], // Kota Ereke (market square first)
+    [62, 66], [52, 64], [42, 58], // Desa Loji Pantai (village centre first)
+    [134, 48], [150, 58], [-26, -36], [-42, -38], // Lipu + Lokonea
+    [130, -22], [132, -14], [134, 122], [128, 128], // Linsowu + Malalanda
+    [-54, 110], [-38, 126], [-146, 6], [-154, 12], // Kalibu + Kadacua
+  ];
+  const lampLights = [];
+  for (const [lx, lz] of lampSpots) {
+    const lamp = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 4.2, 6), mat(0x37474f));
+    pole.position.y = 2.1; pole.castShadow = true; lamp.add(pole);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), lampHeadMat);
+    head.position.y = 4.4; lamp.add(head);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.35, 8), mat(0x37474f));
+    cap.position.y = 4.85; lamp.add(cap);
+    lamp.position.set(lx, groundHeight(lx, lz), lz);
+    group.add(lamp);
+  }
+  // Real light pools at the two main squares only.
+  for (const [lx, lz] of [[0, 38], [62, 66]]) {
+    const pl = new THREE.PointLight(0xffc46b, 0, 36, 1.5);
+    pl.position.set(lx, groundHeight(lx, lz) + 4.5, lz);
+    group.add(pl);
+    lampLights.push(pl);
+  }
+
+  return { group, colliders, sea, seaBase, seaGeo, boats, lostRod, walkways, vehicles, pickups, raceRings, racePoints, raceSign: { x: -110, z: -56 }, salons, board: { x: 2, z: 18 }, coconuts, chests, gather, monsters, placeLabels, lampHeadMat, lampLights };
 }
 
 export function updateSea(world, t) {

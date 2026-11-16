@@ -23,6 +23,22 @@ function tone(a, freq, dur, type, vol, when = 0, slide = 0) {
 }
 
 export function sfxSplash(a) { tone(a, 500, 0.25, 'sine', 0.12, 0, -300); tone(a, 900, 0.15, 'triangle', 0.06, 0.05, -400); }
+// Footstep: a soft low thud; alt flips the pitch slightly (left / right foot).
+export function sfxStep(a, alt) { tone(a, alt ? 95 : 80, 0.09, 'sine', 0.05, 0, -25); }
+// Hurt: a low thud + a falling tone, like being hit by a monster.
+export function sfxHurt(a) { tone(a, 140, 0.25, 'sawtooth', 0.12, 0, -70); tone(a, 90, 0.2, 'sine', 0.1, 0.02, -30); }
+// Slash: a fast falling sawtooth swing; the pitch differs a little per weapon
+// (sword low/heavy, knife high/short, wood dull, torch a whoosh, rod default).
+const SLASH_TONE = {
+  pedang: [320, 0.18, 'sawtooth', -220], pisau: [700, 0.1, 'sawtooth', -400],
+  kayu: [180, 0.14, 'triangle', -80], obor: [500, 0.16, 'sawtooth', -300],
+};
+export function sfxSlash(a, weapon) {
+  const [f, d, t, s] = SLASH_TONE[weapon] || [600, 0.12, 'sawtooth', -350];
+  tone(a, f, d, t, 0.1, 0, s);
+}
+// Bite: two fast high beeps, like an alarm — reel in NOW.
+export function sfxBite(a) { tone(a, 1200, 0.08, 'square', 0.08); tone(a, 1500, 0.08, 'square', 0.08, 0.1); }
 export function sfxCoin(a) { tone(a, 880, 0.12, 'square', 0.07); tone(a, 1320, 0.2, 'square', 0.07, 0.09); }
 export function sfxCatch(a) { tone(a, 523, 0.12, 'triangle', 0.12); tone(a, 659, 0.12, 'triangle', 0.12, 0.1); tone(a, 784, 0.25, 'triangle', 0.12, 0.2); }
 export function sfxFail(a) { tone(a, 220, 0.25, 'sawtooth', 0.08, 0, -80); }

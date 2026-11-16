@@ -1,6 +1,6 @@
 // ui.js — DOM HUD, dialogs, minimap and touch controls (Indonesian UI).
 // The 3D scene stays in the canvas; everything the player reads or clicks is DOM.
-import { WORLD, PLACES, FISH, fmtRp, fmtClock, levelFromXp, levelTitle } from './data.js';
+import { WORLD, PLACES, FISH, fmtRp, fmtClock, levelFromXp, levelTitle, DANGER_ZONES } from './data.js';
 
 export const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
 
@@ -16,7 +16,9 @@ export function createUI() {
     fishProgress: $('fish-progress'),
     title: $('title-screen'), end: $('end-screen'), endTitle: $('end-title'), endText: $('end-text'),
     touch: $('touch'), joy: $('joy'), joyKnob: $('joy-knob'), actionBtn: $('action-btn'),
+    jumpBtn: $('jump-btn'), attackBtn: $('attack-btn'), heldBtn: $('held-btn'), heldPanel: $('held-panel'),
     bannerT: 0, toastT: 0, joyVec: { x: 0, y: 0 }, onAction: null, onTravel: null, onCamDrag: null,
+    onJump: null, onAttack: null,
   };
 }
 
@@ -107,6 +109,13 @@ export function drawMinimap(ui, player, visited, places, waypoint) {
   // Coast road.
   ctx.strokeStyle = '#c9a86a'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(sx(155), sy(-165)); ctx.lineTo(sx(155), sy(165)); ctx.stroke();
+  // Danger zones: thin red dashed circles (no label — the minimap is small).
+  for (const z of DANGER_ZONES) {
+    if (Math.abs(z.x - player.x) > R + z.r || Math.abs(z.z - player.z) > R + z.r) continue;
+    ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.arc(sx(z.x), sy(z.z), Math.max(3, z.r * s), 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+  }
   // Waypoint marker.
   if (waypoint) {
     ctx.fillStyle = '#ffd700';
@@ -146,13 +155,18 @@ export function setupFullMap(ui) {
   const toWorld = (cx, cy) => {
     const r = cv.getBoundingClientRect();
     const base = Math.min(cv.width / 530, cv.height / 330) * ui.mapView.scale;
+    // The canvas is drawn at 900x560 but CSS-scaled (much narrower on a
+    // phone), so client pixels must be converted to canvas pixels first —
+    // otherwise a tap on a phone maps to a world point far from the finger.
+    const ax = (cx - r.left) * (cv.width / r.width);
+    const ay = (cy - r.top) * (cv.height / r.height);
     return {
-      x: ui.mapView.cx + (cx - r.left - cv.width / 2) / base,
-      z: ui.mapView.cz + (cy - r.top - cv.height / 2) / base,
+      x: ui.mapView.cx + (ax - cv.width / 2) / base,
+      z: ui.mapView.cz + (ay - cv.height / 2) / base,
     };
   };
   cv.addEventListener('pointerdown', (e) => {
-    drag = { x: e.clientX, y: e.clientY, moved: false };
+    drag = { x: e.clientX, y: e.clientY, moved: false, k: cv.width / cv.getBoundingClientRect().width };
     try { cv.setPointerCapture(e.pointerId); } catch { /* synthetic events have no active pointer */ }
   });
   cv.addEventListener('pointermove', (e) => {
@@ -161,7 +175,7 @@ export function setupFullMap(ui) {
     if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
     if (drag.moved) {
       const base = Math.min(cv.width / 530, cv.height / 330) * ui.mapView.scale;
-      ui.mapView.cx -= dx / base; ui.mapView.cz -= dy / base;
+      ui.mapView.cx -= (dx * drag.k) / base; ui.mapView.cz -= (dy * drag.k) / base;
       drag.x = e.clientX; drag.y = e.clientY;
       ui.drawFullMapNow();
     }
@@ -198,6 +212,7 @@ export function setupFullMap(ui) {
   document.getElementById('map-zoom-in').addEventListener('click', () => { ui.mapView.scale = Math.min(4, ui.mapView.scale * 1.3); ui.drawFullMapNow(); });
   document.getElementById('map-zoom-out').addEventListener('click', () => { ui.mapView.scale = Math.max(0.6, ui.mapView.scale / 1.3); ui.drawFullMapNow(); });
   document.getElementById('map-close').addEventListener('click', () => { if (ui.onCloseMap) ui.onCloseMap(); });
+  document.getElementById('map-close-x').addEventListener('click', () => { if (ui.onCloseMap) ui.onCloseMap(); });
 }
 
 export function drawFullMap(ui, player, places, waypoint) {
@@ -218,7 +233,39 @@ export function drawFullMap(ui, player, places, waypoint) {
     ctx.strokeStyle = '#c9a86a'; ctx.lineWidth = Math.max(2, 4 * base);
     ctx.beginPath(); ctx.moveTo(sx(155), sy(-165)); ctx.lineTo(sx(155), sy(165)); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(sx(-110), sy(-56)); ctx.lineTo(sx(-185), sy(-60)); ctx.stroke();
-    // Places.
+    // Inland roads between villages (mirror of ROADS in src/world.js).
+    const MAP_ROADS = [
+      [[12, 34], [34, 39], [54, 40], [56, 44]],
+      [[-24, 20], [-30, -8], [-34, -38], [-36, -44]],
+      [[-2, 58], [-5, 66], [-36, 110], [-48, 116]],
+      [[-18, 22], [-60, 18], [-100, 24], [-130, 20], [-148, 20]],
+      [[-58, 132], [-50, 142]],
+      [[134, -34], [152, -20]],
+      [[134, 134], [150, 148]],
+    ];
+    for (const road of MAP_ROADS) {
+      ctx.beginPath();
+      road.forEach(([x, z], i) => { if (i === 0) ctx.moveTo(sx(x), sy(z)); else ctx.lineTo(sx(x), sy(z)); });
+      ctx.stroke();
+    }
+    // Danger zones: red dashed circles + BAHAYA label, drawn UNDER the
+    // place labels (places are drawn next) so no village name is covered.
+    for (const z of DANGER_ZONES) {
+      ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = Math.max(2, 2.5 * base);
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath(); ctx.arc(sx(z.x), sy(z.z), z.r * base, 0, 7); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = `bold ${Math.max(12, Math.round(14 * Math.min(ui.mapView.scale, 2)))}px system-ui, sans-serif`;
+      ctx.fillStyle = '#ff6b5e'; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = 4;
+      // Forest label sits near the top of its circle (the forest's own name
+      // is at the centre); the river label sits just below its circle.
+      const lz = z.r > 20 ? z.z - z.r + 12 : z.z + z.r + 16;
+      const lx = sx(z.x) - ctx.measureText(z.label).width / 2;
+      ctx.strokeText(z.label, lx, sy(lz)); ctx.fillText(z.label, lx, sy(lz));
+    }
+    // Places (greedy label deconfliction: a label that would land on one
+    // already drawn drops one line lower, so close villages stay readable).
+    const drawn = [];
     for (const p of places) {
       const px = sx(p.x); const py = sy(p.z);
       ctx.fillStyle = p.minor ? '#bbb' : '#f1c40f';
@@ -226,8 +273,16 @@ export function drawFullMap(ui, player, places, waypoint) {
       if (!p.minor || ui.mapView.scale > 1.6) {
         const fs = Math.max(11, Math.round(13 * Math.min(ui.mapView.scale, 2)));
         ctx.font = `bold ${fs}px system-ui, sans-serif`;
+        const w = ctx.measureText(p.name).width;
+        let lx = px + 8; let ly = py + 4;
+        for (let tries = 0; tries < 3; tries++) {
+          const hit = drawn.some((b) => lx < b.x1 + 2 && lx + w > b.x0 - 2 && ly - fs < b.y1 + 2 && ly > b.y0 - 2);
+          if (!hit) break;
+          ly += fs + 4;
+        }
+        drawn.push({ x0: lx, y0: ly - fs, x1: lx + w, y1: ly + 2 });
         ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = 4;
-        ctx.strokeText(p.name, px + 8, py + 4); ctx.fillText(p.name, px + 8, py + 4);
+        ctx.strokeText(p.name, lx, ly); ctx.fillText(p.name, lx, ly);
       }
     }
     // Waypoint.
@@ -265,7 +320,7 @@ export function missionsHTML(missions, player) {
     const st = m.status === 'done' ? '✅ Selesai' : m.status === 'active' ? `🔶 Aktif (${have}/${need})` : '⚪ Belum diambil';
     return `<div class="fish-row"><b>${m.title}</b><span>${tierEmoji[m.tier] || m.tier}</span><span>${m.giver}</span><span>${st}</span><span>${fmtRp(m.reward)}${m.rareBait ? ' +🎁' : ''}</span></div>`;
   }).join('');
-  return `<h2>📜 Misi Desa</h2><p>Bicara dengan warga (tekan E di dekat mereka) untuk mengambil misi. 🟢 Mudah Rp 10–25rb · 🟡 Sedang Rp 25–75rb · 🔴 Sulit Rp 75–200rb + hadiah langka.</p><div class="fish-list">${rows}</div><button class="btn" data-close>Tutup</button>`;
+  return `<h2>📜 Misi Desa</h2><p>Bicara dengan warga (${IS_TOUCH ? 'ketuk AKSI di dekat mereka' : 'tekan E di dekat mereka'}) untuk mengambil misi. 🟢 Mudah Rp 10–25rb · 🟡 Sedang Rp 25–75rb · 🔴 Sulit Rp 75–200rb + hadiah langka.</p><div class="fish-list">${rows}</div><button class="btn" data-close>Tutup</button>`;
 }
 
 /** Touch controls: virtual joystick (left), camera drag (right half), big action button. */
@@ -302,12 +357,18 @@ export function setupTouch(ui) {
     }
   });
   // Camera drag starts on the right half of the screen, outside panels/buttons.
+  // Multi-touch: the drag MAY start while the joystick is held (one finger
+  // on the stick, another swiping right to steer). The joystick has its own
+  // touchstart handler and is not a child of the canvas, so a touch that
+  // starts on the stick never reaches this handler — no joyId guard needed.
   document.getElementById('game').addEventListener('touchstart', (e) => {
     const t = e.changedTouches[0];
-    if (t.clientX > window.innerWidth * 0.45 && joyId === null) {
+    if (t.clientX > window.innerWidth * 0.45) {
       camId = t.identifier; lastX = t.clientX; lastY = t.clientY; e.preventDefault();
     }
   }, { passive: false });
   ui.actionBtn.addEventListener('touchstart', (e) => { e.preventDefault(); ui.actionHeld = true; if (ui.onAction) ui.onAction(); }, { passive: false });
   ui.actionBtn.addEventListener('touchend', (e) => { e.preventDefault(); ui.actionHeld = false; }, { passive: false });
+  if (ui.jumpBtn) ui.jumpBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (ui.onJump) ui.onJump(); }, { passive: false });
+  if (ui.attackBtn) ui.attackBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (ui.onAttack) ui.onAttack(); }, { passive: false });
 }

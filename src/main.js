@@ -3,16 +3,16 @@
 // ?shot=start|play|shop|end stages a deterministic scene for screenshots.
 import * as THREE from '../vendor/three.module.min.js';
 import { createScene } from './scene.js';
-import { buildWorld, updateSea, groundHeight, makePlayerMesh } from './world.js';
-import { createPlayer, placePlayer, updatePlayer, updateCamera, addFish, collectionCount, sellAllFish, skinEffect } from './player.js';
+import { buildWorld, updateSea, groundHeight, makePlayerMesh, makeHeldMesh } from './world.js';
+import { createPlayer, placePlayer, updatePlayer, updateCamera, addFish, collectionCount, sellAllFish, skinEffect, surfaceY, blockedAt } from './player.js';
 import { createFishing, startCast, updateFishing, cancelFishing } from './fishing.js';
 import { shopList, buyItem, boatList, buyBoat, fishPrices } from './shop.js';
 import { createMissions, missionProgress, canTurnIn, acceptMission, turnIn, doneCount, missionXp, createJobs, jobProgress, canJobTurnIn, acceptJob, jobTurnIn } from './missions.js';
 import { createNPCs, npcNear, npcLine } from './npcs.js';
 import { createClock, updateClock, endDay, clockText, applyDayNight } from './daynight.js';
-import { createAudio, sfxSplash, sfxCoin, sfxCatch, sfxFail, sfxTalk, sfxSleep, sfxFanfare, updateAmbient } from './audio.js';
+import { createAudio, sfxSplash, sfxCoin, sfxCatch, sfxFail, sfxTalk, sfxSleep, sfxFanfare, sfxStep, sfxHurt, sfxSlash, sfxBite, updateAmbient } from './audio.js';
 import { createUI, updateHUD, setPrompt, showToast, showBanner, updateTimers, showPanel, hidePanel, showEnd, hideEnd, drawMinimap, drawFullMap, setupFullMap, collectionHTML, missionsHTML, setupTouch, IS_TOUCH } from './ui.js';
-import { SPOTS, PLACES, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, SHOP_SKINS, THREAT_DAMAGE, levelFromXp, levelTitle } from './data.js';
+import { SPOTS, PLACES, FISH_BY_ID, fmtRp, fishOfTheDay, LOGIN_REWARDS, TREASURE_CHESTS, RANK_REWARDS, SKIN_DEFS, SHOP_SKINS, THREAT_DAMAGE, HELD_ITEMS, WEAPON_DMG, WEAPONS, isNight, levelFromXp, levelTitle } from './data.js';
 import { readBest, saveBest, readRaceBest, saveRaceBest, saveGame, loadGame, clearSave, readLogin, writeLogin, readEvent, writeEvent } from './save.js';
 import { currentEvent, rivalsFor, playerRank, emptyEventState } from './events.js';
 import { HOUSES, RENT_PRICE } from './data.js';
@@ -27,7 +27,7 @@ const npcs = createNPCs(scene);
 const player = createPlayer();
 scene.add(player.mesh);
 player.walkways = world.walkways;
-placePlayer(player, 62, 78);
+placePlayer(player, 62, 78, world.colliders);
 const fishing = createFishing();
 const clock = createClock();
 const missions = createMissions();
@@ -61,6 +61,7 @@ function applyAppearance() {
   mesh.rotation.y = player.mesh.rotation.y;
   player.mesh = mesh;
   scene.add(mesh);
+  updateHeldMesh(); // the hand mesh is a child of the player mesh: re-attach it
 }
 
 /** Award XP; crossing a rank boundary triggers the SELAMAT! celebration. */
@@ -461,7 +462,7 @@ function applySave(s) {
     const m = missions.find((x) => x.id === sm.id);
     if (m) { m.status = sm.status; m.foundRod = sm.foundRod; }
   }
-  placePlayer(player, s.x ?? 62, s.z ?? 78);
+  placePlayer(player, s.x ?? 62, s.z ?? 78, world.colliders);
   applyAppearance();
 }
 
@@ -490,7 +491,7 @@ function sleepAt(point) {
   const over = endDay(clock);
   saveGame(snapshot());
   if (over) { showToast(ui, 'Hari ke-7 berakhir...'); return endGame(false); }
-  placePlayer(player, point.x, point.z);
+  placePlayer(player, point.x, point.z, world.colliders);
   showToast(ui, `💾 Tersimpan! Selamat pagi, Hari ${clock.day}. 🐟 Ikan Hari Ini: ${fotd().fish.name} di ${fotd().spot.name} (3x)!`);
 }
 
@@ -548,7 +549,7 @@ function resetGame() {
   Object.assign(player, fresh);
   player.walkways = world.walkways;
   scene.add(player.mesh);
-  placePlayer(player, 62, 78);
+  placePlayer(player, 62, 78, world.colliders);
   fishing.state = 'idle'; fishing.result = null;
   clock.day = 1; clock.minutes = 6 * 60;
   missions.forEach((m, i) => { m.status = 'available'; m.foundRod = false; });
@@ -576,10 +577,16 @@ function nearMonster() {
 
 function attackMonster(mon) {
   const lowLevel = levelFromXp(player.xp || 0) < mon.level;
-  let dmg = 8 + player.rod * 6; // better rod = more damage
+  // Damage by what is held: the rod scales with its tier (8 + rod*6 = 14/20/26);
+  // weapons are fixed tiers — wood weakest, then torch, knife, sword strongest.
+  // Empty hand and flashlight hit with bare-hand damage (6).
+  let dmg;
+  if (player.held === 'rod') dmg = 8 + player.rod * 6;
+  else dmg = WEAPON_DMG[player.held] || 6;
   if (lowLevel) dmg = Math.round(dmg / 2);
   mon.hp -= dmg;
-  sfxTalk(audio);
+  sfxSlash(audio, player.held);
+  const heldName = (HELD_ITEMS.find((h) => h.id === player.held) || {}).name || 'Pancing';
   if (mon.hp <= 0) {
     mon.alive = false; mon.mesh.visible = false;
     player.defeated = player.defeated || {};
@@ -591,7 +598,7 @@ function attackMonster(mon) {
     sfxCatch(audio);
     showToast(ui, `🏆 ${mon.name} dikalahkan! +${fmtRp(mon.reward)} · +${mon.xp} XP${mon.fragment ? ' · +🧩 fragmen' : ''}`);
   } else {
-    showToast(ui, `⚔️ Serang ${mon.name}! HP ${Math.max(0, mon.hp)}/${mon.maxHp}${lowLevel ? ' — ⚠️ Level kamu terlalu rendah!' : ''}`);
+    showToast(ui, `⚔️ ${heldName} → ${mon.name}! HP ${Math.max(0, mon.hp)}/${mon.maxHp}${lowLevel ? ' — ⚠️ Level kamu terlalu rendah!' : ''}`);
   }
 }
 
@@ -617,55 +624,69 @@ function maybeRevealChest() {
 }
 
 function doAction() {
-  if (screen === 'title') { startGame(); return; }
-  if (screen === 'win' || screen === 'lose') { resetGame(); return; }
-  if (screen !== 'play') return;
+  if (screen === 'title') { startGame(); return true; }
+  if (screen === 'win' || screen === 'lose') { resetGame(); return true; }
+  if (screen !== 'play') return true;
   if (fishing.state === 'bite') {
     // Stardew-style: HOLD Space / AKSI while the marker is in the green zone.
     // The catch meter fills in the frame loop; nothing instant happens here.
-    return;
+    return true;
   }
-  if (fishing.state === 'waiting') { showToast(ui, 'Sabar... tunggu gigitan!'); return; }
+  if (fishing.state === 'waiting') { showToast(ui, 'Sabar... tunggu gigitan!'); return true; }
   // Motorbike race at the foot of Bukit Lamoliandu.
   if (nearRaceSign()) {
-    if (race) { showToast(ui, 'Balapan sedang berjalan!'); return; }
-    if (player.riding === 'moto') { startRace(); return; }
+    if (race) { showToast(ui, 'Balapan sedang berjalan!'); return true; }
+    if (player.riding === 'moto') { startRace(); return true; }
     showToast(ui, '🏁 Balap Motor Bukit Lamoliandu! Naik motor dulu (motor ada di rumah, Desa Loji Pantai).');
-    return;
+    return true;
   }
   // Forest monsters: tap-to-attack with the fishing rod.
   const mon = nearMonster();
-  if (mon) { attackMonster(mon); return; }
+  if (mon) { attackMonster(mon); return true; }
   // Dismount a vehicle first — one action button does mount and dismount.
   if (player.riding) {
     const v = player.vehicle;
     player.riding = null; player.vehicle = null;
     player.mesh.visible = true;
-    placePlayer(player, v.x - 2, v.z + 1);
+    // Dismount point: try several offsets around the vehicle and take the
+    // first one that is not blocked (16 Nov: the old fixed offset (-2,+1)
+    // could land the player INSIDE a house collider next to the bike, and
+    // there is no way out of a solid box). placePlayer's spiral is the
+    // backstop if every offset is blocked.
+    const offs = [[-2, 1], [2, 1], [-2, -1], [2, -1], [0, 2], [0, -2], [-3, 0], [3, 0]];
+    let dx = -2; let dz = 1;
+    for (const [ox, oz] of offs) {
+      if (!blockedAt(v.x + ox, v.z + oz, false, world.colliders, player.walkways)) { dx = ox; dz = oz; break; }
+    }
+    placePlayer(player, v.x + dx, v.z + dz, world.colliders);
     showToast(ui, `Turun dari ${v.name}. Kendaraan menunggu di sini.`);
-    return;
+    return true;
   }
   const veh = vehicleNear();
   if (veh) {
     player.riding = veh.kind; player.vehicle = veh;
-    showToast(ui, `Naik ${veh.name}! WASD / joystick untuk jalan. E untuk turun.`);
-    return;
+    showToast(ui, IS_TOUCH ? `Naik ${veh.name}! Joystick untuk jalan. Ketuk AKSI untuk turun.` : `Naik ${veh.name}! WASD / joystick untuk jalan. E untuk turun.`);
+    return true;
   }
   if (nearBoatShop()) {
-    if (clock.minutes >= 17 * 60) { showToast(ui, '🔒 Galangan Kapal tutup jam 17:00. Datang lagi besok pagi!'); return; }
-    openBoatShop(); return;
+    if (clock.minutes >= 17 * 60) { showToast(ui, '🔒 Galangan Kapal tutup jam 17:00. Datang lagi besok pagi!'); return true; }
+    openBoatShop(); return true;
   }
-  if (nearBank()) { openBank(); return; }
-  if (nearSalon()) { openSalon(); return; }
-  if (nearBoard()) { openEvents(); return; }
+  if (nearBank()) { openBank(); return true; }
+  if (nearSalon()) { openSalon(); return true; }
+  if (nearBoard()) { openEvents(); return true; }
   const npc = npcNear(npcs, player.x, player.z);
-  if (npc) { openNpc(npc); return; }
+  if (npc) { openNpc(npc); return true; }
+  // Sleep (16 Nov): AKSI sleeps too — on a phone there is no T key, so this
+  // was the only way out of a trap and the only way to save on mobile.
+  // After the vehicle/NPC checks, before the fishing-spot check.
+  if (nearestSavePoint()) { trySleep(); return true; }
   if (nearLostRod()) {
     const m3 = missions.find((m) => m.id === 'm3');
     if (m3 && m3.status === 'active' && !m3.foundRod) {
       m3.foundRod = true; world.lostRod.visible = false;
       showToast(ui, '🎣 Joran Pak Budi ditemukan! Kembalikan padanya.');
-      sfxCoin(audio); return;
+      sfxCoin(audio); return true;
     }
   }
   // Coconuts (mission m5), job crates, forest gatherables, revealed treasure chests.
@@ -675,7 +696,7 @@ function doAction() {
     player.coconuts = (player.coconuts || 0) + 1;
     sfxCoin(audio);
     showToast(ui, `🥥 Kelapa didapat! (${player.coconuts}/3 untuk Es Kelapa)`);
-    return;
+    return true;
   }
   const crate = jobCrates.find((c) => Math.hypot(c.x - player.x, c.z - player.z) < 4);
   if (crate) {
@@ -683,7 +704,7 @@ function doAction() {
     scene.remove(crate.mesh);
     jobCrates = jobCrates.filter((c) => c !== crate);
     if (job) { job.progress += 1; showToast(ui, `📦 Peti diangkut! (${job.progress}/${job.count}) — kembali ke ${job.giver} untuk upah.`); }
-    return;
+    return true;
   }
   const gath = world.gather.find((g) => !g.taken && Math.hypot(g.x - player.x, g.z - player.z) < 4);
   if (gath) {
@@ -691,7 +712,7 @@ function doAction() {
     player.gather[gath.kind] = (player.gather[gath.kind] || 0) + 1;
     sfxCoin(audio);
     showToast(ui, gath.kind === 'wood' ? `🪵 Kayu didapat! Jual di Pasar Ereke (Rp 3.000).` : gath.kind === 'fruit' ? `🍎 Buah liar didapat! Bisa dipakai sebagai umpan.` : `🍄 Jamur didapat! Bisa dipakai sebagai umpan.`);
-    return;
+    return true;
   }
   const chest = world.chests.find((c) => c.revealed && !c.taken && Math.hypot(c.x - player.x, c.z - player.z) < 4);
   if (chest) {
@@ -708,17 +729,20 @@ function doAction() {
     gainXp(150);
     sfxCatch(audio);
     showToast(ui, `💰 ${chest.name} digali! +${fmtRp(reward)} +🎁 umpan langka +150 XP`);
-    return;
+    return true;
   }
   if (nearMarket()) {
-    if (clock.minutes >= 18 * 60) { showToast(ui, '🔒 Pasar Ereke tutup jam 18:00. Buka lagi besok pagi!'); return; }
-    openShop(); return;
+    if (clock.minutes >= 18 * 60) { showToast(ui, '🔒 Pasar Ereke tutup jam 18:00. Buka lagi besok pagi!'); return true; }
+    openShop(); return true;
   }
   const spot = spotNearPlayer();
   if (spot) {
+    // Only the fishing rod can cast: anything else in hand gets a reminder.
+    if (player.held !== 'rod') { showToast(ui, '🎣 Pegang pancing dulu buat mancing'); return true; }
     if (startCast(fishing, spot, player)) { sfxSplash(audio); showToast(ui, `Memancing di ${spot.name}...`); }
     else showToast(ui, 'Energi habis! Tidur dulu (T).');
   }
+  return false; // nothing in reach — the caller (Space) may jump instead
 }
 
 // --- Input: keyboard ---
@@ -745,7 +769,8 @@ window.addEventListener('keydown', (e) => {
   if (screen === 'haggle' && k === ' ') { resolveHaggle(); return; }
   if (screen !== 'play') { if (k === 'c' && (screen === 'book')) closePanel(); return; }
   keys.add(k);
-  if (k === 'f' || k === ' ') doAction();
+  if (k === 'f') doAction();
+  if (k === ' ') { if (!doAction() && !e.repeat) tryJump(); } // Space: action first, jump if nothing is in reach
   if (k === 'e') doAction();
   if (k === 'x' && fishing.state !== 'idle') { cancelFishing(fishing); showToast(ui, '🎣 Pancingan ditarik kembali.'); }
   if (k === 'c') openBook();
@@ -756,10 +781,10 @@ window.addEventListener('keydown', (e) => {
     const onPier = player.x > 166 && player.z > 37 && player.z < 49;
     if (player.boatTier > 0 && (nearHarbour() || onPier) && !player.onBoat) {
       player.onBoat = true;
-      placePlayer(player, onPier ? 200 : 185, onPier ? 58 : 45);
+      placePlayer(player, onPier ? 200 : 185, onPier ? 58 : 45, world.colliders);
       showToast(ui, '⛵ Berlayar! Arahkan ke Tengah Laut Banda.');
     } else if (player.onBoat && player.x < 190) {
-      player.onBoat = false; placePlayer(player, 160, player.z);
+      player.onBoat = false; placePlayer(player, 160, player.z, world.colliders);
       showToast(ui, '⚓ Turun dari perahu.');
     } else if (!player.boatTier) showToast(ui, 'Kamu belum punya perahu. Beli di Galangan Kapal, Pelabuhan Ereke.');
   }
@@ -827,7 +852,7 @@ ui.panelBody.addEventListener('click', (e) => {
   else if (t.hasAttribute('data-jobaccept')) {
     const j = jobs.find((x) => x.id === t.dataset.jobaccept);
     acceptJob(j);
-    if (j.kind === 'carry') { spawnJobCrates(j); showToast(ui, `💼 Kerja diterima! Angkut ${j.count} peti di dekat ${j.title.includes('Pasar') ? 'pasar' : 'dermaga'} (tekan E di dekat peti).`); }
+    if (j.kind === 'carry') { spawnJobCrates(j); showToast(ui, `💼 Kerja diterima! Angkut ${j.count} peti di dekat ${j.title.includes('Pasar') ? 'pasar' : 'dermaga'} (${IS_TOUCH ? 'ketuk AKSI di dekat peti' : 'tekan E di dekat peti'}).`); }
     else showToast(ui, '💼 Kerja diterima! Serahkan ikan ke pemberi kerja.');
     openNpc(currentNpc);
   }
@@ -925,7 +950,31 @@ ui.onCamDrag = (dx, dy) => {
   player.camPitch = Math.max(0.08, Math.min(1.1, player.camPitch + dy * 0.004));
 };
 ui.onAction = () => doAction();
+ui.onJump = () => tryJump();
+ui.onAttack = () => {
+  const mon = nearMonster();
+  if (mon) attackMonster(mon); // same slash sound + damage as AKSI
+  else showToast(ui, 'Tidak ada monster di dekatmu');
+};
 setupTouch(ui);
+// Held-item selector: the HUD button toggles the panel; a row picks an item.
+(function buildHeldPanel() {
+  const list = document.getElementById('held-list');
+  for (const h of HELD_ITEMS) {
+    const b = document.createElement('button');
+    b.className = 'held-row' + (h.id === player.held ? ' sel' : '');
+    b.dataset.held = h.id;
+    b.innerHTML = `<span>${h.icon} ${h.name}</span><small>${h.note}</small>`;
+    b.addEventListener('click', () => setHeld(h.id));
+    list.appendChild(b);
+  }
+  ui.heldBtn.addEventListener('click', () => {
+    ui.heldPanel.style.display = ui.heldPanel.style.display === 'block' ? 'none' : 'block';
+  });
+  document.getElementById('held-close').addEventListener('click', () => { ui.heldPanel.style.display = 'none'; });
+})();
+// Touch help line: no keyboard on a phone, so show the touch controls instead.
+if (IS_TOUCH) document.getElementById('help').textContent = 'Joystick jalan · Geser kamera · AKSI memancing/bicara · 🗺️ peta';
 
 document.getElementById('start-btn').addEventListener('click', startGame);
 document.getElementById('restart-btn').addEventListener('click', resetGame);
@@ -951,6 +1000,50 @@ if (existingSave) {
 
 // Debug/testing handle (read-only state for playtests; the game never reads it).
 window.__ereke = { player, clock, missions, jobs, fishing, world, eventState, evt, get screen() { return screen; }, startGame, doAction, gainXp, levelFromXp, levelTitle, maybeRevealChest, openEvents, openProfile, openSalon };
+
+// --- Night lights: a warm torch glow around the player and a focused
+// flashlight beam forward, both only at night and only while held. The
+// village lamps are toggled in the frame loop (world.lampHeadMat/lampLights).
+const torchLight = new THREE.PointLight(0xffa040, 0, 20, 1.6);
+scene.add(torchLight);
+const flashLight = new THREE.SpotLight(0xfff2cc, 0, 30, 0.45, 0.4, 1.2);
+scene.add(flashLight); scene.add(flashLight.target);
+
+/** Rebuild the small held-item mesh in the character's right hand. */
+function updateHeldMesh() {
+  if (!player.mesh) return;
+  const old = player.mesh.getObjectByName('heldItem');
+  if (old) player.mesh.remove(old);
+  const m = makeHeldMesh(player.held);
+  if (m) { m.name = 'heldItem'; player.mesh.add(m); }
+}
+
+/** Switch the held item: button label, SERANG visibility, hand mesh. */
+function setHeld(id) {
+  player.held = id;
+  const item = HELD_ITEMS.find((h) => h.id === id) || HELD_ITEMS[0];
+  ui.heldBtn.textContent = `${item.icon} ${item.name}`;
+  ui.attackBtn.style.display = WEAPONS.has(id) ? 'block' : 'none';
+  updateHeldMesh();
+  if (ui.heldPanel) ui.heldPanel.style.display = 'none';
+  // Refresh the selected row in the panel (it is rebuilt below on open).
+  document.querySelectorAll('.held-row').forEach((r) => r.classList.toggle('sel', r.dataset.held === id));
+}
+
+/** Jump: vertical velocity, on foot only (never on a vehicle/boat, never fishing). */
+function tryJump() {
+  if (screen !== 'play' || fishing.state !== 'idle' || player.riding || player.onBoat || player.airY > 0) return;
+  player.vy = 9;
+}
+
+// --- Place labels: only show a place's floating name when the player is
+// near it, so distant village names never pile up on screen. ---
+function updatePlaceLabels(world, player) {
+  if (!world.placeLabels) return;
+  for (const l of world.placeLabels) {
+    l.sprite.visible = Math.hypot(l.x - player.x, l.z - player.z) <= l.range;
+  }
+}
 
 // --- Main loop ---
 const clock3 = new THREE.Clock();
@@ -978,8 +1071,25 @@ function frame() {
     }
     ui._joyKeys = joyKeys;
     if (fishing.state === 'idle') updatePlayer(player, keys, dt, world.colliders);
+    // Safety net (16 Nov): if the player is somehow inside a solid collider
+    // (an old save, a dismount, a teleport), push them out to the nearest
+    // free spot at once — walking out of a solid box is impossible, so a
+    // stuck player would otherwise be soft-locked with no way out.
+    if (!player.riding && !player.onBoat && blockedAt(player.x, player.z, false, world.colliders, player.walkways)) {
+      placePlayer(player, player.x, player.z, world.colliders);
+    }
     const holding = keys.has(' ') || !!ui.actionHeld;
+    const prevFishState = fishing.state;
     updateFishing(fishing, dt, clock.minutes, player.rod, player.boatTier || 1, holding, skinEffect(player, 'fishSpeed'), skinEffect(player, 'rare'));
+    if (prevFishState === 'waiting' && fishing.state === 'bite') sfxBite(audio); // the fish bites: reel in NOW
+    // Footsteps: a soft thud per half walk-cycle, on foot only (never on a
+    // vehicle/boat, never while fishing or standing still). Left/right alternate.
+    if (player.moving && !player.riding && !player.onBoat && fishing.state === 'idle') {
+      const si = Math.floor(player.walkPhase / Math.PI);
+      if (si !== player._lastStep) { player._lastStep = si; sfxStep(audio, si % 2 === 0); }
+    } else {
+      player._lastStep = Math.floor(player.walkPhase / Math.PI);
+    }
     // Monster counterattacks: alive monsters near the player strike on a timer.
     for (const mon of world.monsters) {
       if (!mon.alive) continue;
@@ -990,6 +1100,7 @@ function frame() {
           mon.attackT = 0;
           const dmg = THREAT_DAMAGE[mon.threat];
           player.energy = Math.max(0, player.energy - dmg);
+          sfxHurt(audio); // the player is hit — a low thud + falling tone
           if (mon.steals && Math.random() < 0.25) {
             if (player.bait > 0) { player.bait -= 1; showToast(ui, `🐒 Kera Hutan mencuri 1 umpanmu! (−${dmg} energi)`); }
             else if (Object.keys(player.fish).length) { const id = Object.keys(player.fish)[0]; player.fish[id] -= 1; if (player.fish[id] <= 0) delete player.fish[id]; showToast(ui, `🐒 Kera Hutan mencuri 1 ikanmu! (−${dmg} energi)`); }
@@ -1069,38 +1180,65 @@ function frame() {
       }
     }
     placeCheck();
-    // Context prompt.
+    // Context prompt. On a phone there is no E/F/Space key, so the action
+    // prompts say "Ketuk AKSI" (or "Tahan AKSI" for the bite) instead.
+    const act = IS_TOUCH ? 'Ketuk AKSI' : 'Tekan E / AKSI';
     let prompt = '';
-    if (fishing.state === 'bite') prompt = 'Tekan SPASI / AKSI saat di zona hijau!';
+    if (fishing.state === 'bite') prompt = IS_TOUCH ? 'Tahan AKSI saat di zona hijau!' : 'Tekan SPASI / AKSI saat di zona hijau!';
     else if (fishing.state === 'waiting') prompt = 'Menunggu gigitan...';
-    else if (player.riding) prompt = 'Tekan E / AKSI: Turun dari kendaraan';
-    else if (nearMonster()) prompt = `Tekan E / AKSI: Serang ${nearMonster().name} (HP ${Math.max(0, nearMonster().hp)}/${nearMonster().maxHp})`;
-    else if (nearRaceSign()) prompt = 'Tekan E / AKSI: Balap Motor Bukit Lamoliandu';
-    else if (nearBank()) prompt = 'Tekan E / AKSI: Bank BNI Ereke (beli rumah)';
-    else if (nearSalon()) prompt = 'Tekan E / AKSI: Salon (ganti rambut & baju)';
-    else if (nearBoard()) prompt = 'Tekan E / AKSI: Papan Pengumuman (event minggu ini)';
-    else if (nearestSavePoint()) prompt = 'Tekan T: Tidur & simpan game';
-    else if (vehicleNear()) prompt = `Tekan E / AKSI: Naik ${vehicleNear().name}`;
-    else if (nearBoatShop()) prompt = 'Tekan E / AKSI: Galangan Kapal (beli perahu)';
-    else if (npcNear(npcs, player.x, player.z)) prompt = 'Tekan E / AKSI: Bicara';
-    else if (nearLostRod() && missions.find((m) => m.id === 'm3').status === 'active') prompt = 'Tekan E / AKSI: Ambil joran';
-    else if (world.coconuts.find((c) => !c.taken && Math.hypot(c.x - player.x, c.z - player.z) < 4)) prompt = 'Tekan E / AKSI: Ambil kelapa';
-    else if (jobCrates.find((c) => Math.hypot(c.x - player.x, c.z - player.z) < 4)) prompt = 'Tekan E / AKSI: Angkut peti';
-    else if (world.gather.find((g) => !g.taken && Math.hypot(g.x - player.x, g.z - player.z) < 4)) prompt = 'Tekan E / AKSI: Kumpulkan hasil hutan';
-    else if (world.chests.find((c) => c.revealed && !c.taken && Math.hypot(c.x - player.x, c.z - player.z) < 4)) prompt = 'Tekan E / AKSI: Gali peti harta!';
-    else if (nearMarket()) prompt = 'Tekan E / AKSI: Pasar Ereke';
-    else if (nearHome()) prompt = 'Tekan T: Tidur (akhiri hari)';
+    else if (player.riding) prompt = `${act}: Turun dari kendaraan`;
+    else if (nearMonster()) prompt = `${act}: Serang ${nearMonster().name} (HP ${Math.max(0, nearMonster().hp)}/${nearMonster().maxHp})`;
+    else if (nearRaceSign()) prompt = `${act}: Balap Motor Bukit Lamoliandu`;
+    else if (nearBank()) prompt = `${act}: Bank BNI Ereke (beli rumah)`;
+    else if (nearSalon()) prompt = `${act}: Salon (ganti rambut & baju)`;
+    else if (nearBoard()) prompt = `${act}: Papan Pengumuman (event minggu ini)`;
+    else if (vehicleNear()) prompt = `${act}: Naik ${vehicleNear().name}`;
+    else if (nearestSavePoint()) prompt = IS_TOUCH ? 'Ketuk AKSI: Tidur & simpan game' : 'Tekan T: Tidur & simpan game';
+    else if (nearBoatShop()) prompt = `${act}: Galangan Kapal (beli perahu)`;
+    else if (npcNear(npcs, player.x, player.z)) prompt = `${act}: Bicara`;
+    else if (nearLostRod() && missions.find((m) => m.id === 'm3').status === 'active') prompt = `${act}: Ambil joran`;
+    else if (world.coconuts.find((c) => !c.taken && Math.hypot(c.x - player.x, c.z - player.z) < 4)) prompt = `${act}: Ambil kelapa`;
+    else if (jobCrates.find((c) => Math.hypot(c.x - player.x, c.z - player.z) < 4)) prompt = `${act}: Angkut peti`;
+    else if (world.gather.find((g) => !g.taken && Math.hypot(g.x - player.x, g.z - player.z) < 4)) prompt = `${act}: Kumpulkan hasil hutan`;
+    else if (world.chests.find((c) => c.revealed && !c.taken && Math.hypot(c.x - player.x, c.z - player.z) < 4)) prompt = `${act}: Gali peti harta!`;
+    else if (nearMarket()) prompt = `${act}: Pasar Ereke`;
+    else if (nearHome()) prompt = IS_TOUCH ? 'Ketuk AKSI: Tidur (akhiri hari)' : 'Tekan T: Tidur (akhiri hari)';
     else if (nearHarbour() && player.boatTier > 0 && !player.onBoat) prompt = 'Tekan B: Naik perahu';
     else if (player.onBoat && player.x < 190) prompt = 'Tekan B: Turun dari perahu';
-    else { const s = spotNearPlayer(); if (s) prompt = `Tekan F / AKSI: Memancing di ${s.name}`; }
+    else {
+      const s = spotNearPlayer();
+      if (s) {
+        prompt = player.held === 'rod'
+          ? (IS_TOUCH ? `Ketuk AKSI: Memancing di ${s.name}` : `Tekan F / AKSI: Memancing di ${s.name}`)
+          : '🎣 Pegang pancing dulu buat mancing';
+      }
+    }
     if (prompt !== lastPrompt) { setPrompt(ui, prompt); lastPrompt = prompt; }
   }
   updateAmbient(audio, dt);
   applyDayNight({ sun, hemi, moon, scene }, clock.minutes);
+  // Night lights (night = 18:00+, the game's own isNight): village lamp heads
+  // glow + the two square PointLights come on; the torch gives a warm glow
+  // around the player and the flashlight a focused beam forward.
+  const nightNow = isNight(clock.minutes);
+  if (world.lampHeadMat) world.lampHeadMat.emissiveIntensity = nightNow ? 1.4 : 0;
+  for (const l of world.lampLights || []) l.intensity = nightNow ? 50 : 0;
+  const gy = surfaceY(player.x, player.z, player.onBoat, player.walkways);
+  torchLight.intensity = (player.held === 'obor' && nightNow) ? 50 : 0;
+  torchLight.position.set(player.x, gy + 2, player.z);
+  const flOn = player.held === 'senter' && nightNow;
+  flashLight.intensity = flOn ? 80 : 0;
+  if (flOn) {
+    flashLight.position.set(player.x, gy + 1.6, player.z);
+    const fx = player.x - Math.sin(player.camYaw) * 10;
+    const fz = player.z - Math.cos(player.camYaw) * 10;
+    flashLight.target.position.set(fx, surfaceY(fx, fz, player.onBoat, player.walkways) + 0.5, fz);
+  }
   updateSea(world, elapsed);
   updateCamera(player, camera, dt);
   updateHUD(ui, player, clock, fishing);
   drawMinimap(ui, player, visited, PLACES, waypoint);
+  updatePlaceLabels(world, player);
   // 3D waypoint arrow above the player + compass chip with live distance.
   const wchip = document.getElementById('waypoint-chip');
   if (waypoint) {

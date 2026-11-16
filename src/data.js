@@ -102,6 +102,27 @@ export const MONSTERS = [
 ];
 export const THREAT_DAMAGE = { Rendah: 5, Sedang: 8, Tinggi: 12, Bahaya: 18 };
 
+// Danger zones (drawn on the full map + minimap, red dashed circles).
+// Hutan Loji holds the 4 forest monsters; the Bone river holds Buaya Lv30.
+export const DANGER_ZONES = [
+  { x: -94, z: 141, r: 35, label: '⚠️ BAHAYA' },
+  { x: 151, z: 146, r: 15, label: '⚠️ BAHAYA' },
+];
+
+// Held items (the hand selector). All available from the start in this build.
+// Rod damage scales with rod tier (8 + rod*6); the rest are fixed tiers.
+export const HELD_ITEMS = [
+  { id: 'rod', icon: '🎣', name: 'Pancing', note: 'memancing' },
+  { id: 'hand', icon: '✋', name: 'Tangan kosong', note: 'dmg 6' },
+  { id: 'pisau', icon: '🔪', name: 'Pisau', note: 'dmg 24' },
+  { id: 'pedang', icon: '🗡️', name: 'Pedang', note: 'dmg 32' },
+  { id: 'obor', icon: '🔥', name: 'Obor', note: 'dmg 16 · cahaya hangat' },
+  { id: 'kayu', icon: '🪵', name: 'Kayu', note: 'dmg 10' },
+  { id: 'senter', icon: '🔦', name: 'Senter', note: 'sorotan malam' },
+];
+export const WEAPON_DMG = { hand: 6, kayu: 10, obor: 16, pisau: 24, pedang: 32, senter: 6 };
+export const WEAPONS = new Set(['kayu', 'obor', 'pisau', 'pedang']); // show the SERANG button
+
 // Hidden treasure chests (3 map fragments combine to reveal one).
 export const TREASURE_CHESTS = [
   { id: 'c1', name: 'Harta Pantai Membuku', x: 148, z: -98, reward: 80000 },
@@ -154,7 +175,7 @@ export const PLACES = [
   { id: 'lapangan', name: 'Lapangan Raja Jin', sub: 'Lapangan bola Ereke', x: -20, z: -10, r: 22 },
   { id: 'rsud', name: 'RSUD Buton Utara', sub: 'Jl. Poros Kalibu, Desa Loji', x: 95, z: 95, r: 20 },
   { id: 'stadion', name: 'Stadion Bahteramas', sub: 'SOR Bukit Lamoliandu — kandang PS Buton Utara', x: -185, z: -60, r: 26 },
-  { id: 'gor', name: 'GOR Lamoliandu', sub: 'Gedung olahraga — Piala Lamoliandu', x: -148, z: -62, r: 20 },
+  { id: 'gor', name: 'GOR Lamoliandu', sub: 'Gedung olahraga — Piala Lamoliandu', x: -128, z: -18, r: 20 },
   { id: 'basket', name: 'Lapangan Basket', sub: 'SOR Bukit Lamoliandu', x: -158, z: -30, r: 16 },
   { id: 'takraw', name: 'Lapangan Takraw', sub: 'SOR Bukit Lamoliandu', x: -212, z: -40, r: 16 },
   { id: 'benteng-lipu', name: 'Benteng Lipu', sub: 'Situs budaya di kaki bukit', x: -120, z: -100, r: 20 },
