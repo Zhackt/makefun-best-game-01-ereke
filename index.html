@@ -41,7 +41,7 @@
   /* Backup-code paste field, hidden by default (dots, like a password field);
      the eye button toggles this class. Visual masking only — the value is
      never changed, so toggling cannot lose the pasted code. */
-  #backup-code-input.masked { -webkit-text-security: disc; text-security: disc; }
+  #backup-code-input.masked, #code-input.masked { -webkit-text-security: disc; text-security: disc; }
   #panel { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 20; }
   #panel-body { background: #12283d; color: #fff; border: 2px solid #f1c40f; border-radius: 14px; padding: 22px 26px; width: min(620px, 92vw); max-height: 84vh; overflow-y: auto; }
   #panel-body h2 { margin: 0 0 6px; color: #f1c40f; }
@@ -80,6 +80,12 @@
   #name-input { background: rgba(255,255,255,.12); color: #fff; border: 2px solid rgba(255,255,255,.4); border-radius: 10px; padding: 10px 14px; font-size: 16px; font-weight: 700; text-align: center; width: min(280px, 80vw); margin-top: 6px; }
   #name-input:focus { outline: none; border-color: #f1c40f; }
   #name-input::placeholder { color: rgba(255,255,255,.55); font-weight: 500; }
+  /* Code field on the title screen (batch 7): same look as the name field,
+     masked by default (dots) with an eye button — like the backup-code
+     field in ⚙️ Pengaturan. */
+  #code-input { background: rgba(255,255,255,.12); color: #fff; border: 2px solid rgba(255,255,255,.4); border-radius: 10px; padding: 10px 52px 10px 14px; font-size: 15px; font-weight: 700; text-align: center; width: 100%; box-sizing: border-box; }
+  #code-input:focus { outline: none; border-color: #f1c40f; }
+  #code-input::placeholder { color: rgba(255,255,255,.55); font-weight: 500; font-size: 13px; }
   /* Title art: a real in-game render (batch 5, item 5). */
   .title-art { width: 100%; max-height: 220px; object-fit: cover; border-radius: 12px; border: 2px solid rgba(241,196,15,.6); margin: 0 0 10px; display: block; }
   /* Loading screen (batch 5, item 5): Mobile-Legends style — big title over
@@ -187,6 +193,14 @@
   <p>👤 <b>Pilih karaktermu:</b></p>
   <p><button class="gender-btn selected" data-gender="cowo">👦 Cowo</button> <button class="gender-btn" data-gender="cewe">👧 Cewe</button></p>
   <p>📝 <b>Nama karaktermu:</b><br><input id="name-input" type="text" maxlength="16" placeholder="Tulis nama karakter…" autocomplete="off"></p>
+  <p>🔑 <b>Tempel kode:</b><br><span style="position:relative;display:inline-block;width:min(280px,80vw)"><input id="code-input" type="text" class="masked" placeholder="Tempel kode save / kode developer…" autocomplete="off"><button type="button" id="code-eye" title="Tampilkan/sembunyikan kode" aria-label="Tampilkan atau sembunyikan kode" style="position:absolute;top:50%;right:6px;transform:translateY(-50%);width:40px;height:40px;min-width:40px;background:rgba(255,255,255,.12);color:#fff;border:2px solid rgba(255,255,255,.4);border-radius:8px;font-size:18px;line-height:1;cursor:pointer;padding:0">👁️</button></span><br><button class="btn" id="code-apply" style="margin-top:8px">✅ Pakai Kode</button></p>
+  <p id="code-status" style="font-size:13px;line-height:1.5;min-height:18px;margin:4px 0 0"></p>
+  <div id="title-costume" style="text-align:left;margin-top:14px">
+    <h3 style="color:#f1c40f;margin:0 0 4px;font-size:18px">👕 Kostum</h3>
+    <p style="font-size:13px;opacity:.9;margin:0 0 6px">Pilih skin sebelum main — hanya skin yang sudah kamu miliki yang bisa dipakai. Tampilan skin mengikuti gender di atas 👦/👧.</p>
+    <div id="title-costume-list"></div>
+    <p id="title-costume-status" style="font-size:13px;line-height:1.5;min-height:18px;margin:8px 0 0"></p>
+  </div>
   <button class="btn" id="start-btn">▶ Mulai Bermain</button>
   <button class="btn ghost" id="settings-btn">⚙️ Pengaturan</button>
   <button class="btn ghost" id="continue-btn" style="display:none">↻ Lanjutkan</button>
