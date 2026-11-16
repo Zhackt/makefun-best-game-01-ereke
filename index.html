@@ -91,6 +91,9 @@
   #loading-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #f1c40f, #ffe066); transition: width .25s; }
   #loading-pct { font-size: 18px; font-weight: 800; color: #f1c40f; }
   #loading-label { font-size: 13px; opacity: .85; margin: 4px 0 0; }
+  /* Creator credit (loading hotfix): tiny, at the very bottom of the
+     loading screen only — never covers the title or the bar. */
+  .loading-credit { position: absolute; bottom: 14px; left: 0; right: 0; z-index: 1; text-align: center; color: rgba(255,255,255,.65); font-size: 12px; margin: 0; }
   body.touch #held-btn { left: 22px; right: auto; top: auto; bottom: 165px; min-width: 44px; min-height: 44px; padding: 10px 14px; }
   body.touch #held-panel { left: 12px; right: auto; top: 50%; transform: translateY(-50%); max-height: 92vh; overflow-y: auto; width: min(260px, 86vw); }
   .rar { font-size: 12px; opacity: .8; }
@@ -219,24 +222,58 @@
     <div id="loading-pct">0%</div>
     <p id="loading-label">Memuat…</p>
   </div>
+  <p class="loading-credit">Dibuat oleh Marselin</p>
 </div>
 <script>
-  // Loading progress hooks (batch 5, item 5): main.js calls these at real
-  // init milestones — the bar never moves on its own.
-  window.__erekeLoad = function (pct, label) {
+  // Loading progress (batch 5, item 5 + loading hotfix): the bar runs on a
+  // TIMER — ~20% per second, 100% in ~5s — so it never stalls on a slow
+  // connection while the big module files (three.js ~659 KB) download. The
+  // title screen only appears when main.js says the game is REALLY ready
+  // (__erekeReady): if the game is ready early, the bar jumps to 100%; if
+  // 5s pass first, the bar holds at 100% ("Memuat…") until the game is
+  // ready. Never enter the title screen before the game is ready.
+  var loadStart = performance.now();
+  var loadShown = 0;
+  var loadLabel = 'Memuat…';
+  var loadDone = false;
+  var loadTimer = null;
+  function paintLoad(pct, label) {
     var bar = document.getElementById('loading-bar');
     var t = document.getElementById('loading-pct');
     var l = document.getElementById('loading-label');
     if (bar) bar.style.width = pct + '%';
     if (t) t.textContent = Math.round(pct) + '%';
     if (l && label) l.textContent = label;
+  }
+  function finishLoad(showTitle) {
+    if (loadDone) return;
+    loadDone = true;
+    if (loadTimer) clearInterval(loadTimer);
+    paintLoad(100, 'Siap!');
+    setTimeout(function () {
+      var s = document.getElementById('loading-screen');
+      if (s) s.style.display = 'none';
+      if (showTitle) { var t = document.getElementById('title-screen'); if (t) t.style.display = 'flex'; }
+    }, 350);
+  }
+  loadTimer = setInterval(function () {
+    if (loadDone) return;
+    // 20% per second: 1s = 20%, 5s = 100%.
+    var target = Math.min(100, (performance.now() - loadStart) / 50);
+    if (target > loadShown) loadShown = target;
+    paintLoad(loadShown, loadShown >= 100 ? 'Memuat…' : loadLabel);
+  }, 100);
+  window.__erekeLoad = function (pct, label) {
+    // Milestone from main.js: refresh the stage label, and let the bar jump
+    // forward to at least this percent — never backwards.
+    if (label) loadLabel = label;
+    if (pct > loadShown) { loadShown = pct; paintLoad(loadShown, loadLabel); }
   };
-  window.__erekeLoadDone = function (showTitle) {
-    var s = document.getElementById('loading-screen');
-    if (s) s.style.display = 'none';
-    if (showTitle) { var t = document.getElementById('title-screen'); if (t) t.style.display = 'flex'; }
-  };
-  window.__erekeLoad(5, 'Memuat…');
+  // Called by main.js when the first frame is painted = game really ready.
+  window.__erekeReady = function () { finishLoad(true); };
+  // Direct finish (screenshot mode ?shot= bypasses the loading flow).
+  window.__erekeLoadDone = function (showTitle) { finishLoad(showTitle); };
+  paintLoad(0, 'Memuat…');
 </script>
 <script type="module" src="./src/main.js"></script>
 </body>
